@@ -1,0 +1,6 @@
+{
+  "name": "V2 _artt_GERADOR_DE_IMAGEM",
+  "description": "Faça o upload de um arquivo CSV com descrições de cenas para gerar automaticamente personas de personagens, fotos de perfil e visualizações de cenas usando IA. Em seguida, edite as imagens geradas com sugestões de texto.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
