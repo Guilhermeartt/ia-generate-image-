@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { Character, Scene, CsvRow, ImageModel, SavedAnalysis, AppSettings, ProjectState, TextAnalysisResult, AnalysisModalState, ImageRegion, GenerationSettings, SettingsPreset } from './types';
+import type { Character, Scene, CsvRow, ImageModel, SavedAnalysis, AppSettings, ProjectState, TextAnalysisResult, AnalysisModalState, ImageRegion, GenerationSettings, SettingsPreset, TextCostEntry } from './types';
 import FileUpload from './components/FileUpload';
 import Loader from './components/Loader';
 import CharacterCard from './components/CharacterCard';
@@ -19,6 +19,7 @@ import {
   isolateCharacter,
   analyzeImageText,
   generateSplitPrompts,
+  registerCostEmitter,
 } from './services/geminiService';
 import type { SplitImage } from './types';
 import { SparklesIcon, ReloadIcon, ArchiveIcon, SettingsIcon, FolderOpenIcon, GalleryIcon, CostReportIcon } from './components/icons';
@@ -103,6 +104,7 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ActiveView>('characters');
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [isGalleryEditing, setIsGalleryEditing] = useState(false);
+  const [textCosts, setTextCosts] = useState<TextCostEntry[]>([]);
 
   const getImageDimensions = (base64Url: string): Promise<{ width: number; height: number; }> => {
     return new Promise((resolve, reject) => {
@@ -137,6 +139,19 @@ const App: React.FC = () => {
     } catch(e) {
         console.error("Failed to load presets from localStorage", e);
     }
+
+    // Register cost emitter so every Gemini API text call is tracked
+    registerCostEmitter(({ operation, model, inputTokens, outputTokens, costBRL }) => {
+      setTextCosts(prev => [...prev, {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        operation,
+        model,
+        inputTokens,
+        outputTokens,
+        costBRL,
+        timestamp: Date.now(),
+      }]);
+    });
   }, []);
 
   const handleFileChange = (selectedFile: File) => {
@@ -153,6 +168,7 @@ const App: React.FC = () => {
     setAvailableStyles([]);
     setActiveView('characters');
     setBatchProgress(null);
+    setTextCosts([]);
   }, []);
 
   const parseCSV = (text: string): CsvRow[] => {
@@ -1487,21 +1503,25 @@ const App: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-200 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
       <main className="max-w-screen-2xl mx-auto">
-        <header className="text-center mb-12 relative">
-          <div className="flex items-center justify-center gap-3">
-             <SparklesIcon className="text-cyan-400" />
-             <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-slate-100">
-                Estúdio de Roteiro Visual
-             </h1>
+        <header className="text-center mb-14 relative pt-2 animate-fade-in-up">
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 text-xs font-semibold mb-7 tracking-widest uppercase">
+            <SparklesIcon width={11} height={11} />
+            Powered by Gemini AI
           </div>
-          <p className="mt-4 text-lg text-slate-400 max-w-3xl mx-auto">
-            Faça o upload do seu roteiro em formato CSV. Nossa IA irá analisá-lo, gerar perfis de personagens e criar visualizações para cada cena.
+          {/* Title */}
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight leading-none">
+            <span className="text-gradient-violet">Estúdio</span>{' '}
+            <span className="text-white">de Roteiro Visual</span>
+          </h1>
+          <p className="mt-5 text-base sm:text-lg text-slate-500 max-w-2xl mx-auto leading-relaxed">
+            Faça o upload do seu roteiro em CSV — a IA analisa, extrai personagens e cria visualizações cinematográficas para cada cena.
           </p>
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="absolute top-0 right-0 p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"
+            className="absolute top-0 right-0 p-2.5 text-slate-600 hover:text-violet-400 hover:bg-violet-500/10 rounded-xl transition-all duration-200"
             aria-label="Abrir configurações"
           >
             <SettingsIcon />
@@ -1510,21 +1530,21 @@ const App: React.FC = () => {
 
         {!file && (
           <>
-            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch animate-fade-in-up" style={{animationDelay:'80ms'}}>
                 <div className="flex flex-col">
-                    <h3 className="text-center text-lg font-medium text-slate-300 mb-3">Começar um Novo Projeto</h3>
+                    <h3 className="text-center text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">Novo Projeto</h3>
                     <FileUpload onFileSelect={handleFileChange} />
                 </div>
                 <div className="flex flex-col">
-                    <h3 className="text-center text-lg font-medium text-slate-300 mb-3">Carregar um Projeto</h3>
-                    <div className="p-10 border border-dashed border-slate-700 rounded-lg flex flex-col items-center justify-center h-full hover:border-cyan-400 transition-colors bg-slate-800/20">
+                    <h3 className="text-center text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">Carregar Projeto</h3>
+                    <div className="glass glass-hover rounded-2xl p-10 flex flex-col items-center justify-center h-full cursor-pointer group">
                         <input ref={projectInputRef} type="file" id="project-upload" className="hidden" accept=".zip,application/zip" onChange={handleProjectFileChange} />
                         <label htmlFor="project-upload" className="flex flex-col items-center justify-center cursor-pointer text-center">
-                            <FolderOpenIcon width={48} height={48} className="text-slate-500 mb-4" />
-                            <p className="text-slate-400">
-                                <span className="font-semibold text-cyan-400 hover:underline">Clique para carregar</span>
-                            </p>
-                            <p className="text-xs text-slate-500 mt-1">Apenas arquivos de projeto .zip</p>
+                            <div className="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mb-4 group-hover:bg-violet-500/20 transition-colors">
+                                <FolderOpenIcon width={28} height={28} className="text-violet-400" />
+                            </div>
+                            <p className="text-slate-300 font-semibold">Clique para carregar</p>
+                            <p className="text-xs text-slate-600 mt-1">Arquivos .zip do projeto</p>
                         </label>
                     </div>
                 </div>
@@ -1535,22 +1555,24 @@ const App: React.FC = () => {
         )}
         
         {file && processingState === 'idle' && (
-          <div className="text-center">
-            <p className="text-lg mb-6">
-              Arquivo pronto:{' '}
-              <span className="font-semibold text-cyan-400">
-                {file.name}
-              </span>
-            </p>
-            <button
-              onClick={handleAnalyze}
-              disabled={!isLoaded}
-              className="px-8 py-4 text-xl font-semibold text-white bg-cyan-500 rounded-lg shadow-lg hover:bg-cyan-600 disabled:bg-slate-600 transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-cyan-500"
-            >
-              <SparklesIcon className="inline-block mr-3 -mt-1" />
-              Iniciar Análise com IA
-            </button>
-            {!isLoaded && <p className="text-xs text-slate-500 mt-2">Carregando configurações...</p>}
+          <div className="text-center animate-fade-in-up">
+            <div className="inline-flex items-center gap-2 px-4 py-2 glass rounded-xl mb-6">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <p className="text-sm text-slate-300">
+                <span className="font-semibold text-violet-300">{file.name}</span> pronto para análise
+              </p>
+            </div>
+            <div>
+              <button
+                onClick={handleAnalyze}
+                disabled={!isLoaded}
+                className="btn-primary px-10 py-4 text-lg font-bold text-white rounded-2xl inline-flex items-center gap-3"
+              >
+                <SparklesIcon width={20} height={20} />
+                Iniciar Análise com IA
+              </button>
+              {!isLoaded && <p className="text-xs text-slate-600 mt-3">Carregando configurações...</p>}
+            </div>
           </div>
         )}
 
@@ -1559,15 +1581,12 @@ const App: React.FC = () => {
         )}
         
         {error && (
-          <div className="text-center my-6 p-4 bg-red-900/30 border border-red-700 rounded-lg max-w-3xl mx-auto">
-            <h3 className="font-bold text-red-400 text-xl">Ocorreu um Erro</h3>
-            <p className="text-red-300 mt-2 whitespace-pre-wrap">{error}</p>
+          <div className="text-center my-8 p-6 bg-red-500/10 border border-red-500/30 rounded-2xl max-w-3xl mx-auto animate-fade-in">
+            <h3 className="font-bold text-red-400 text-xl mb-2">Ocorreu um Erro</h3>
+            <p className="text-red-300/80 whitespace-pre-wrap text-sm">{error}</p>
             <button
-              onClick={() => {
-                setFile(null);
-                resetState();
-              }}
-              className="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded-md font-semibold"
+              onClick={() => { setFile(null); resetState(); }}
+              className="btn-primary mt-5 px-6 py-2.5 text-sm font-semibold text-white rounded-xl inline-flex items-center gap-2"
             >
               Tentar Novamente
             </button>
@@ -1576,231 +1595,217 @@ const App: React.FC = () => {
 
         {processingState === 'done' && (
           <>
-            <section className="mb-10 p-6 bg-slate-800 border border-slate-700 rounded-xl">
+            <section className="mb-10 glass glass-hover rounded-2xl p-6 animate-fade-in">
               <div className="flex flex-wrap items-center justify-between gap-4">
-                <h2 className="text-2xl font-bold text-slate-100">Configurações de Geração</h2>
+                <h2 className="text-xl font-bold text-white">Configurações de Geração</h2>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsGalleryOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-100 bg-indigo-700 rounded-lg hover:bg-indigo-600 transition-colors"
+                    className="btn-ghost flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl"
                     title="Ver e editar todas as imagens geradas no projeto"
                   >
                     <GalleryIcon width={16} height={16} />
-                    <span>Galeria do Projeto</span>
+                    <span>Galeria</span>
                   </button>
                   <button
                       onClick={handleExportProject}
                       disabled={isDownloading}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-100 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:bg-slate-600 disabled:cursor-wait transition-colors"
-                      title="Salvar todo o projeto (prompts, imagens, configurações) como um arquivo .zip"
+                      className="btn-primary flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl"
+                      title="Salvar todo o projeto como .zip"
                   >
                       {isDownloading ? (
-                          <div className="w-5 h-5 border-2 border-slate-200/50 border-t-slate-200 rounded-full animate-spin"></div>
+                          <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full" style={{animation:'spin .8s linear infinite'}}></div>
                       ) : (
                           <ArchiveIcon />
                       )}
-                      <span>{isDownloading ? 'Exportando...' : 'Exportar Projeto (.zip)'}</span>
+                      <span>{isDownloading ? 'Exportando...' : 'Exportar .zip'}</span>
                   </button>
                 </div>
               </div>
 
-              {/* ── Tabela de custos por modelo ── */}
-              <div className="mt-6 p-3 bg-slate-900/60 border border-slate-700/60 rounded-lg">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Custo estimado por modelo</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { label: 'Flash 2.5', model: 'gemini-2.5-flash-image',         priceUSD: '$0,060/1K tk', priceBRL: '≈ R$0,005/tk',  note: 'Rápido · multimodal' },
-                    { label: 'Flash 3.1', model: 'gemini-3.1-flash-image-preview', priceUSD: '$0,060/1K tk', priceBRL: '≈ R$0,005/tk',  note: 'Novo · multimodal' },
-                    { label: 'Pro 3',     model: 'gemini-3-pro-image-preview',     priceUSD: '$0,030/1K tk', priceBRL: '≈ R$0,003/tk',  note: 'Alta fidelidade' },
-                    { label: 'Imagen 4',  model: 'imagen-4.0-generate-001',        priceUSD: '$0,040/img',   priceBRL: '≈ R$0,232/img', note: 'Preço fixo/imagem' },
-                  ].map(({ label, priceUSD, priceBRL, note }) => (
-                    <div key={label} className="flex flex-col gap-0.5 bg-slate-800/80 rounded-md px-3 py-2 border border-slate-700/40">
-                      <span className="text-xs font-bold text-cyan-400">{label}</span>
-                      <span className="text-xs font-mono text-emerald-400">{priceBRL}</span>
-                      <span className="text-xs text-slate-500">{priceUSD}</span>
-                      <span className="text-xs text-slate-600 mt-0.5">{note}</span>
+              {/* ── Card de preços por modelo ── */}
+              <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { label: 'Flash 2.5', priceBRL: 'R$0,005/tk', priceUSD: '$0,060/1K tk', note: 'Rápido · multimodal', color: 'border-blue-500/20 hover:border-blue-500/40', dot: 'bg-blue-400' },
+                  { label: 'Flash 3.1', priceBRL: 'R$0,005/tk', priceUSD: '$0,060/1K tk', note: 'Novo · multimodal',   color: 'border-violet-500/25 hover:border-violet-500/50', dot: 'bg-violet-400' },
+                  { label: 'Pro 3',     priceBRL: 'R$0,003/tk', priceUSD: '$0,030/1K tk', note: 'Alta fidelidade',     color: 'border-purple-500/20 hover:border-purple-500/40', dot: 'bg-purple-400' },
+                  { label: 'Imagen 4',  priceBRL: 'R$0,232/img',priceUSD: '$0,040/img',   note: 'Preço fixo/imagem',  color: 'border-orange-500/20 hover:border-orange-500/40', dot: 'bg-orange-400' },
+                ].map(({ label, priceBRL, priceUSD, note, color, dot }) => (
+                  <div key={label} className={`rounded-xl px-3 py-2.5 border bg-black/30 transition-all duration-200 ${color}`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
+                      <span className="text-xs font-bold text-slate-200">{label}</span>
                     </div>
-                  ))}
-                </div>
+                    <p className="text-sm font-bold text-emerald-400">{priceBRL}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{priceUSD}</p>
+                    <p className="text-xs text-slate-700 mt-0.5">{note}</p>
+                  </div>
+                ))}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-6 mt-6">
-                <div className="space-y-2">
-                  <label htmlFor="character-image-model" className="text-sm font-medium text-slate-300">Modelo do Personagem</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-5 mt-7">
+                <div className="space-y-1.5">
+                  <label htmlFor="character-image-model" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Modelo do Personagem</label>
                   <select
                     id="character-image-model"
                     value={characterImageModel}
-                    onChange={(e) => {
-                        setCharacterImageModel(e.target.value as ImageModel);
-                        setSelectedPresetId('custom');
-                    }}
-                    className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm focus:ring-cyan-500 focus:border-cyan-500 w-full"
+                    onChange={(e) => { setCharacterImageModel(e.target.value as ImageModel); setSelectedPresetId('custom'); }}
+                    className="input-glass rounded-xl px-3 py-2 text-sm w-full"
                   >
-                    <option value="imagen-4.0-generate-001">Imagen 4 (Alta Qualidade)</option>
-                    <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Rápido)</option>
-                    <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image ✨ Novo</option>
-                    <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (Alta Fidelidade)</option>
+                    <option value="imagen-4.0-generate-001">Imagen 4 — Alta Qualidade</option>
+                    <option value="gemini-2.5-flash-image">Flash 2.5 — Rápido</option>
+                    <option value="gemini-3.1-flash-image-preview">Flash 3.1 ✨ Novo</option>
+                    <option value="gemini-3-pro-image-preview">Pro 3 — Alta Fidelidade</option>
                   </select>
                 </div>
-                
-                <div className="space-y-2">
-                  <label htmlFor="image-model" className="text-sm font-medium text-slate-300">Modelo da Cena</label>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="image-model" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Modelo da Cena</label>
                   <select
                     id="image-model"
                     value={imageModel}
-                    onChange={(e) => {
-                        setImageModel(e.target.value as ImageModel);
-                        setSelectedPresetId('custom');
-                    }}
-                    className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm focus:ring-cyan-500 focus:border-cyan-500 w-full"
+                    onChange={(e) => { setImageModel(e.target.value as ImageModel); setSelectedPresetId('custom'); }}
+                    className="input-glass rounded-xl px-3 py-2 text-sm w-full"
                   >
-                    <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
-                    <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image ✨ Novo</option>
-                    <option value="imagen-4.0-generate-001">Imagen 4 (Alta Qualidade)</option>
-                    <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (Alta Fidelidade)</option>
+                    <option value="gemini-2.5-flash-image">Flash 2.5 — Rápido</option>
+                    <option value="gemini-3.1-flash-image-preview">Flash 3.1 ✨ Novo</option>
+                    <option value="imagen-4.0-generate-001">Imagen 4 — Alta Qualidade</option>
+                    <option value="gemini-3-pro-image-preview">Pro 3 — Alta Fidelidade</option>
                   </select>
                 </div>
-                
-                <div className="space-y-2">
-                  <label htmlFor="aspect-ratio" className="text-sm font-medium text-slate-300">Proporção da Cena</label>
-                  <select 
+
+                <div className="space-y-1.5">
+                  <label htmlFor="aspect-ratio" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Proporção da Cena</label>
+                  <select
                     id="aspect-ratio"
                     value={aspectRatio}
-                    onChange={(e) => {
-                        setAspectRatio(e.target.value);
-                        setSelectedPresetId('custom');
-                    }}
-                    className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm focus:ring-cyan-500 focus:border-cyan-500 w-full"
+                    onChange={(e) => { setAspectRatio(e.target.value); setSelectedPresetId('custom'); }}
+                    className="input-glass rounded-xl px-3 py-2 text-sm w-full"
                   >
-                    <option value="16:9">16:9 (Paisagem)</option>
-                    <option value="1:1">1:1 (Quadrado)</option>
-                    <option value="9:16">9:16 (Retrato)</option>
-                    <option value="4:3">4:3 (Padrão)</option>
-                    <option value="3:4">3:4 (Vertical)</option>
+                    <option value="16:9">16:9 — Paisagem</option>
+                    <option value="1:1">1:1 — Quadrado</option>
+                    <option value="9:16">9:16 — Retrato</option>
+                    <option value="4:3">4:3 — Padrão</option>
+                    <option value="3:4">3:4 — Vertical</option>
                   </select>
                 </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="resolution" className="text-sm font-medium text-slate-300">Resolução (Tamanho)</label>
-                  <select 
+                <div className="space-y-1.5">
+                  <label htmlFor="resolution" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Resolução</label>
+                  <select
                     id="resolution"
                     value={resolution}
-                    onChange={(e) => {
-                        setResolution(e.target.value as '1K' | '2K' | '4K');
-                        setSelectedPresetId('custom');
-                    }}
+                    onChange={(e) => { setResolution(e.target.value as '1K' | '2K' | '4K'); setSelectedPresetId('custom'); }}
                     disabled={imageModel !== 'gemini-3-pro-image-preview' && characterImageModel !== 'gemini-3-pro-image-preview' && imageModel !== 'imagen-4.0-generate-001'}
-                    className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm focus:ring-cyan-500 focus:border-cyan-500 w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={imageModel === 'gemini-3-pro-image-preview' ? 'Selecione a qualidade de saída' : 'Disponível principalmente para Gemini 3 Pro'}
+                    className="input-glass rounded-xl px-3 py-2 text-sm w-full disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <option value="1K">1K (Padrão)</option>
-                    <option value="2K">2K (Alta Resolução)</option>
-                    <option value="4K">4K (Ultra Resolução)</option>
+                    <option value="1K">1K — Padrão</option>
+                    <option value="2K">2K — Alta Resolução</option>
+                    <option value="4K">4K — Ultra Resolução</option>
                   </select>
                 </div>
 
-                <div className="col-span-1 sm:col-span-2 lg:col-span-4 mt-4 pt-4 border-t border-slate-700/50">
-                    <label htmlFor="presets" className="text-sm font-medium text-slate-300">Presets de Configuração</label>
-                    <div className="flex items-center gap-2 mt-2">
-                        <select
-                        id="presets"
-                        value={selectedPresetId}
-                        onChange={handlePresetChange}
-                        className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm focus:ring-cyan-500 focus:border-cyan-500 w-full"
-                        >
-                        <option value="custom">Configuração Personalizada</option>
-                        {presets.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                        </select>
-                        <button onClick={handleSavePreset} className="px-4 py-2 text-sm font-semibold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 transition-colors flex-shrink-0">
-                        Salvar
-                        </button>
-                        <button
-                        onClick={handleDeletePreset}
-                        disabled={selectedPresetId === 'custom'}
-                        className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                        >
-                        Excluir
-                        </button>
-                    </div>
+                <div className="col-span-1 sm:col-span-2 lg:col-span-4 pt-5 border-t border-violet-500/10">
+                  <label htmlFor="presets" className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Presets de Configuração</label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <select
+                      id="presets"
+                      value={selectedPresetId}
+                      onChange={handlePresetChange}
+                      className="input-glass rounded-xl px-3 py-2 text-sm w-full"
+                    >
+                      <option value="custom">Configuração Personalizada</option>
+                      {presets.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <button onClick={handleSavePreset} className="btn-primary px-4 py-2 text-sm font-semibold text-white rounded-xl flex-shrink-0">
+                      Salvar
+                    </button>
+                    <button
+                      onClick={handleDeletePreset}
+                      disabled={selectedPresetId === 'custom'}
+                      className="px-4 py-2 text-sm font-semibold text-white bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0"
+                    >
+                      Excluir
+                    </button>
+                  </div>
                 </div>
-
               </div>
             </section>
 
-            <section className="mb-10 p-6 bg-slate-800 border border-slate-700 rounded-xl">
-              <h2 className="text-2xl font-bold mb-2 text-center text-slate-100">Contexto Geral</h2>
-              <p className="text-sm text-slate-400 text-center mb-4 max-w-3xl mx-auto">Este contexto, gerado por IA, influencia todas as criações de imagem. Sinta-se à vontade para editá-lo e refinar o estilo geral.</p>
+            <section className="mb-10 glass glass-hover rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-base font-bold text-white">Contexto Geral</h2>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/20">IA</span>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">Influencia todas as gerações de imagem. Edite para refinar o estilo global.</p>
               <textarea
                 value={generalContext}
                 onChange={(e) => setGeneralContext(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-md p-3 text-sm text-slate-300 focus:ring-cyan-500 focus:border-cyan-500"
-                rows={4}
+                className="input-glass w-full rounded-xl p-3 text-sm"
+                rows={3}
               />
             </section>
             
-            <div className="border-b border-slate-700 mb-8">
-              <nav className="flex space-x-2" aria-label="Tabs">
-                <button
-                  onClick={() => setActiveView('characters')}
-                  className={`px-4 py-2 text-lg font-medium rounded-t-lg transition-colors border-b-2 ${activeView === 'characters' ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-slate-400 hover:text-white'}`}
-                >
-                  Personagens <span className="text-sm text-slate-500">{characters.length}</span>
-                </button>
-                <button
-                  onClick={() => setActiveView('scenes')}
-                  className={`px-4 py-2 text-lg font-medium rounded-t-lg transition-colors border-b-2 ${activeView === 'scenes' ? 'border-cyan-400 text-cyan-400' : 'border-transparent text-slate-400 hover:text-white'}`}
-                >
-                  Cenas <span className="text-sm text-slate-500">{scenes.length}</span>
-                </button>
-                <button
-                  onClick={() => setActiveView('costs')}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-lg font-medium rounded-t-lg transition-colors border-b-2 ${activeView === 'costs' ? 'border-emerald-400 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}
-                >
-                  <CostReportIcon width={18} height={18} />
-                  Custos
-                </button>
-              </nav>
+            <div className="flex justify-center mb-10">
+              <div className="glass rounded-2xl p-1.5 inline-flex gap-1">
+                {([
+                  { id: 'characters', label: 'Personagens', count: characters.length },
+                  { id: 'scenes',     label: 'Cenas',       count: scenes.length },
+                  { id: 'costs',      label: 'Custos',      count: null },
+                ] as const).map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveView(tab.id)}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
+                      activeView === tab.id
+                        ? 'bg-violet-600 text-white shadow-lg'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {tab.id === 'costs' && <CostReportIcon width={15} height={15} />}
+                    {tab.label}
+                    {tab.count !== null && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-md ${activeView === tab.id ? 'bg-white/20 text-white' : 'bg-white/5 text-slate-500'}`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {activeView === 'characters' && (
-              <section>
-                <div className="flex flex-col mb-6 pb-2">
-                   <div className="flex flex-wrap items-center justify-between gap-4">
-                      <h2 className="text-3xl font-bold text-slate-100">Personagens</h2>
-                      <div className="flex items-center gap-4">
-                        <button
-                            onClick={handleReloadCharacters}
-                            disabled={isReloadingChars || isGeneratingAllChars}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-slate-200 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:bg-slate-500 disabled:cursor-wait transition-colors"
-                        >
-                            {isReloadingChars ? (
-                                <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
-                            ) : (
-                                <ReloadIcon />
-                            )}
-                            <span>{isReloadingChars ? 'Recarregando...' : 'Recarregar'}</span>
-                        </button>
-                        <button
-                            onClick={handleGenerateAllCharacterImages}
-                            disabled={isGeneratingAllChars || isReloadingChars}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:bg-slate-500 disabled:cursor-wait transition-colors"
-                            title={isGeneratingAllChars && batchProgress ? `Gerando: ${batchProgress.currentItemName}` : 'Gerar imagens para todos os personagens faltantes'}
-                        >
-                            {isGeneratingAllChars ? (
-                                <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
-                            ) : (
-                                <SparklesIcon width={16} height={16} />
-                            )}
-                            <span>
-                                {isGeneratingAllChars && batchProgress 
-                                    ? `Gerando (${batchProgress.current}/${batchProgress.total})...` 
-                                    : 'Gerar Todos'}
-                            </span>
-                        </button>
-                      </div>
-                   </div>
+              <section className="animate-fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">Personagens</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">{characters.length} personagem{characters.length !== 1 ? 's' : ''} detectado{characters.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleReloadCharacters}
+                      disabled={isReloadingChars || isGeneratingAllChars}
+                      className="btn-ghost flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl"
+                    >
+                      {isReloadingChars
+                        ? <div className="w-4 h-4 border-2 border-violet-400/40 border-t-violet-400 rounded-full" style={{animation:'spin .8s linear infinite'}}></div>
+                        : <ReloadIcon />}
+                      <span>{isReloadingChars ? 'Recarregando...' : 'Recarregar'}</span>
+                    </button>
+                    <button
+                      onClick={handleGenerateAllCharacterImages}
+                      disabled={isGeneratingAllChars || isReloadingChars}
+                      className="btn-primary flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl"
+                      title={isGeneratingAllChars && batchProgress ? `Gerando: ${batchProgress.currentItemName}` : 'Gerar imagens para todos os personagens'}
+                    >
+                      {isGeneratingAllChars
+                        ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full" style={{animation:'spin .8s linear infinite'}}></div>
+                        : <SparklesIcon width={15} height={15} />}
+                      <span>{isGeneratingAllChars && batchProgress ? `Gerando (${batchProgress.current}/${batchProgress.total})...` : 'Gerar Todos'}</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                   {characters.map((char) => (
@@ -1824,39 +1829,38 @@ const App: React.FC = () => {
             )}
             
             {activeView === 'costs' && (
-              <section>
-                <div className="flex items-center gap-3 mb-6 pb-2">
-                  <CostReportIcon className="text-emerald-400" width={28} height={28} />
+              <section className="animate-fade-in">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center">
+                    <CostReportIcon className="text-emerald-400" width={20} height={20} />
+                  </div>
                   <div>
-                    <h2 className="text-3xl font-bold text-slate-100">Relatório de Custos</h2>
-                    <p className="text-sm text-slate-400 mt-0.5">Consumo de tokens e custo estimado por imagem gerada neste roteiro.</p>
+                    <h2 className="text-2xl font-bold text-white">Relatório de Custos</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">Consumo de tokens e custo estimado por imagem gerada neste roteiro.</p>
                   </div>
                 </div>
-                <CostReportView characters={characters} scenes={scenes} />
+                <CostReportView characters={characters} scenes={scenes} textCosts={textCosts} />
               </section>
             )}
 
             {activeView === 'scenes' && (
-              <section>
-                <div className="flex flex-wrap items-center justify-between mb-6 pb-2">
-                  <h2 className="text-3xl font-bold text-slate-100">Cenas</h2>
-                   <button
-                        onClick={handleGenerateAllSceneImages}
-                        disabled={isGeneratingAllScenes}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-cyan-600 rounded-lg hover:bg-cyan-700 disabled:bg-slate-500 disabled:cursor-wait transition-colors"
-                        title={isGeneratingAllScenes && batchProgress ? `Gerando: ${batchProgress.currentItemName}` : 'Gerar imagens para todas as cenas faltantes'}
-                    >
-                        {isGeneratingAllScenes ? (
-                            <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
-                        ) : (
-                            <SparklesIcon width={16} height={16} />
-                        )}
-                        <span>
-                            {isGeneratingAllScenes && batchProgress
-                                ? `Gerando (${batchProgress.current}/${batchProgress.total})...`
-                                : 'Gerar Todas as Cenas'}
-                        </span>
-                    </button>
+              <section className="animate-fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">Cenas</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">{scenes.length} cena{scenes.length !== 1 ? 's' : ''} no roteiro</p>
+                  </div>
+                  <button
+                    onClick={handleGenerateAllSceneImages}
+                    disabled={isGeneratingAllScenes}
+                    className="btn-primary flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl"
+                    title={isGeneratingAllScenes && batchProgress ? `Gerando: ${batchProgress.currentItemName}` : 'Gerar imagens para todas as cenas'}
+                  >
+                    {isGeneratingAllScenes
+                      ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full" style={{animation:'spin .8s linear infinite'}}></div>
+                      : <SparklesIcon width={15} height={15} />}
+                    <span>{isGeneratingAllScenes && batchProgress ? `Gerando (${batchProgress.current}/${batchProgress.total})...` : 'Gerar Todas'}</span>
+                  </button>
                 </div>
                 <div className="space-y-8">
                   {scenes.map((scene, index) => (

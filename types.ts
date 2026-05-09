@@ -130,3 +130,14 @@ export interface ImageRegion {
   width: number;
   height: number;
 }
+
+/** Uma entrada de custo para chamadas de texto/análise da API Gemini */
+export interface TextCostEntry {
+  id: string;
+  operation: string;       // 'Contexto Geral', 'Personagens', 'Análise de Cena', etc.
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costBRL: number;
+  timestamp: number;
+}

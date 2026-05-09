@@ -2,20 +2,51 @@ import { GoogleGenAI, Type, Modality, GenerateContentResponse, GenerateImagesRes
 import type { Character, ImageModel, TextAnalysisResult } from '../types';
 
 // ── Pricing constants (as of May 2026) ──────────────────────────────────────
-// Flash image models: $0.060 per 1K output tokens
-// Pro image model:    $0.030 per 1K output tokens
-// Imagen 4:           $0.040 fixed per image (no token count)
+// Image models (output tokens)
 const MODEL_PRICE_PER_TOKEN: Record<string, number> = {
   'gemini-2.5-flash-image':           0.060 / 1000,
   'gemini-3.1-flash-image-preview':   0.060 / 1000,
   'gemini-3-pro-image-preview':       0.030 / 1000,
 };
+// Text models (input + output tokens, per token)
+const TEXT_MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'gemini-2.5-pro':   { input: 1.25  / 1_000_000, output: 10.00 / 1_000_000 },
+  'gemini-2.5-flash': { input: 0.15  / 1_000_000, output: 0.60  / 1_000_000 },
+};
 const USD_TO_BRL = 5.80;
 const IMAGEN_COST_USD = 0.040;
 
+/** Calcula custo de imagem (output tokens) */
 const calcCost = (model: string, tokens: number): { tokens: number; costBRL: number } => {
   const pricePerToken = MODEL_PRICE_PER_TOKEN[model] ?? (0.060 / 1000);
   return { tokens, costBRL: parseFloat((tokens * pricePerToken * USD_TO_BRL).toFixed(4)) };
+};
+
+/** Calcula custo de chamadas de texto (input + output) */
+const calcTextCost = (model: string, inputTokens: number, outputTokens: number): number => {
+  const pricing = TEXT_MODEL_PRICING[model] ?? TEXT_MODEL_PRICING['gemini-2.5-flash'];
+  return parseFloat(((inputTokens * pricing.input + outputTokens * pricing.output) * USD_TO_BRL).toFixed(5));
+};
+
+// ── Cost emitter ─────────────────────────────────────────────────────────────
+// Allows the App to listen for all API costs without changing return types.
+type CostEmitPayload = {
+  operation: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costBRL: number;
+};
+type CostEmitFn = (payload: CostEmitPayload) => void;
+let _costEmitter: CostEmitFn | null = null;
+
+/** Register a callback that receives a cost entry for every Gemini API call. */
+export const registerCostEmitter = (fn: CostEmitFn): void => { _costEmitter = fn; };
+
+const emitCost = (operation: string, model: string, inputTokens: number, outputTokens: number): void => {
+  if (!_costEmitter) return;
+  const costBRL = calcTextCost(model, inputTokens, outputTokens);
+  _costEmitter({ operation, model, inputTokens, outputTokens, costBRL });
 };
 
 // Re-instantiate the client on each call to ensure the latest API Key is used if needed
@@ -102,6 +133,9 @@ export const generateGeneralContext = async (csvContent: string, promptTemplate:
     model,
     contents: `${promptTemplate}\n\nConteúdo do CSV:\n${csvContent}`,
   }));
+  const inputTokens  = response.usageMetadata?.promptTokenCount     ?? 0;
+  const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+  emitCost('Contexto Geral', model, inputTokens, outputTokens);
   return response.text?.trim() || '';
 };
 
@@ -134,6 +168,10 @@ export const generateCharacters = async (
       },
     },
   }));
+
+  const inputTokens  = response.usageMetadata?.promptTokenCount     ?? 0;
+  const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+  emitCost('Personagens', model, inputTokens, outputTokens);
 
   const jsonText = response.text?.trim();
   if (!jsonText) throw new Error("Resposta vazia do modelo.");
@@ -187,6 +225,10 @@ export const analyzeScene = async (
       },
     },
   }));
+
+  const inputTokens  = response.usageMetadata?.promptTokenCount     ?? 0;
+  const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+  emitCost('Análise de Cena', model, inputTokens, outputTokens);
 
   const jsonText = response.text?.trim();
   if (!jsonText) throw new Error("Resposta vazia do modelo.");
@@ -580,6 +622,10 @@ Responda APENAS com o objeto JSON.`;
     },
   }));
   
+  const inputTokens  = response.usageMetadata?.promptTokenCount     ?? 0;
+  const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+  emitCost('Análise de Texto', model, inputTokens, outputTokens);
+
   const jsonText = response.text?.trim();
   if (!jsonText) throw new Error("Resposta vazia do modelo.");
 
@@ -618,6 +664,10 @@ Retorne APENAS um array JSON com exatamente ${count} strings. Sem markdown, sem 
     contents: systemPrompt,
   }));
 
+  const inputTokens  = response.usageMetadata?.promptTokenCount     ?? 0;
+  const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+  emitCost('Divisão de Cena', model, inputTokens, outputTokens);
+
   const text = response.text?.trim() || '';
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) throw new Error('Falha ao gerar sub-prompts para divisão da cena.');
@@ -649,6 +699,10 @@ export const analyzeUploadedImage = async (
       ],
     },
   }));
+
+  const inputTokens  = response.usageMetadata?.promptTokenCount     ?? 0;
+  const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+  emitCost('Análise de Imagem', model, inputTokens, outputTokens);
 
   return response.text?.trim() || 'Sem resposta.';
 };
