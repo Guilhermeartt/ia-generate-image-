@@ -22,6 +22,16 @@ const gcd = (a: number, b: number): number => {
   return b === 0 ? a : gcd(b, a % b);
 };
 
+const modelLabelShort = (model: string): string => {
+  switch (model) {
+    case 'gemini-2.5-flash-image':         return 'Flash 2.5';
+    case 'gemini-3.1-flash-image-preview': return 'Flash 3.1';
+    case 'gemini-3-pro-image-preview':     return 'Pro 3';
+    case 'imagen-4.0-generate-001':        return 'Imagen 4';
+    default:                               return model.split('-')[0];
+  }
+};
+
 const CharacterCard: React.FC<CharacterCardProps> = ({
   character,
   scenes,
@@ -109,7 +119,7 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
           </button>
           {isBusy && <ImageLoader message={busyMessage} />}
           {character.imageWidth && character.imageHeight && (
-            <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-md pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-10">
+            <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-md pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-10">
                 <span>{character.imageWidth}x{character.imageHeight}</span>
                 <span className="ml-2 text-slate-400">
                     {(character.imageWidth / gcd(character.imageWidth, character.imageHeight))}:
@@ -245,6 +255,26 @@ const CharacterCard: React.FC<CharacterCardProps> = ({
         <div className="relative">
             {renderImageContainer()}
         </div>
+        {/* ── Faixa de metadados: modelo + custo ── */}
+        {character.imageUrl && (character.costBRL !== undefined || character.modelUsed) && (
+            <div
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/60 border-b border-slate-700/60 text-xs"
+                title={character.tokens ? `${character.tokens.toLocaleString('pt-BR')} tokens de saída` : 'Custo estimado'}
+            >
+                {character.modelUsed && (
+                    <span className="text-cyan-400 font-semibold">{modelLabelShort(character.modelUsed)}</span>
+                )}
+                {character.costBRL !== undefined && (
+                    <>
+                        {character.modelUsed && <span className="text-slate-600">·</span>}
+                        <span className="text-emerald-400 font-medium">R${character.costBRL.toFixed(3).replace('.', ',')}</span>
+                    </>
+                )}
+                {character.tokens && (
+                    <span className="text-slate-500 ml-auto">{character.tokens.toLocaleString('pt-BR')} tk</span>
+                )}
+            </div>
+        )}
         <div className="p-4 flex flex-col flex-grow">
             <h3 className="font-bold text-lg text-cyan-400">{character.name}</h3>
             

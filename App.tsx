@@ -18,10 +18,25 @@ import {
   editImage,
   isolateCharacter,
   analyzeImageText,
+  generateSplitPrompts,
 } from './services/geminiService';
-import { SparklesIcon, ReloadIcon, ArchiveIcon, SettingsIcon, FolderOpenIcon } from './components/icons';
+import type { SplitImage } from './types';
+import { SparklesIcon, ReloadIcon, ArchiveIcon, SettingsIcon, FolderOpenIcon, GalleryIcon, CostReportIcon } from './components/icons';
 import ImagePreviewModal from './components/ImagePreviewModal';
 import QuickAnalyzer from './components/QuickAnalyzer';
+import ProjectGalleryModal, { ProjectImageItem } from './components/ProjectGalleryModal';
+import CostReportView from './components/CostReportView';
+
+/** Retorna um rótulo curto do modelo para exibição na interface. */
+const modelLabel = (model: string): string => {
+  switch (model) {
+    case 'gemini-2.5-flash-image':         return 'Flash 2.5';
+    case 'gemini-3.1-flash-image-preview': return 'Flash 3.1';
+    case 'gemini-3-pro-image-preview':     return 'Pro 3';
+    case 'imagen-4.0-generate-001':        return 'Imagen 4';
+    default:                               return model.split('-')[0];
+  }
+};
 
 type ProcessingState =
   | 'idle'
@@ -48,7 +63,7 @@ const PREDEFINED_STYLES = [
   'Low-Angle Shot',
 ];
 
-type ActiveView = 'characters' | 'scenes';
+type ActiveView = 'characters' | 'scenes' | 'costs';
 
 interface BatchProgress {
   current: number;
@@ -86,6 +101,8 @@ const App: React.FC = () => {
   const [presets, setPresets] = useState<SettingsPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
   const [activeView, setActiveView] = useState<ActiveView>('characters');
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [isGalleryEditing, setIsGalleryEditing] = useState(false);
 
   const getImageDimensions = (base64Url: string): Promise<{ width: number; height: number; }> => {
     return new Promise((resolve, reject) => {
@@ -368,17 +385,20 @@ const App: React.FC = () => {
       
       const prompt = character.image_prompt;
 
-      const { base64Data, mimeType } = await generateImage(prompt, characterModel, characterAspectRatio, 1, generalContext, resolution);
+      const { base64Data, mimeType, tokens, costBRL } = await generateImage(prompt, characterModel, characterAspectRatio, 1, generalContext, resolution);
       const imageUrl = `data:${mimeType};base64,${base64Data}`;
       const { width, height } = await getImageDimensions(imageUrl);
-      
-      const charWithImage = { 
-        ...character, 
-        imageUrl, 
-        imageMimeType: mimeType, 
+
+      const charWithImage = {
+        ...character,
+        imageUrl,
+        imageMimeType: mimeType,
         isLoading: false,
         imageWidth: width,
         imageHeight: height,
+        tokens,
+        costBRL,
+        modelUsed: characterModel,
         previousImageUrl: character.imageUrl,
         previousImageMimeType: character.imageMimeType
       };
@@ -397,17 +417,20 @@ const App: React.FC = () => {
 
     setCharacters(prev => prev.map(c => c.name === name ? { ...c, isIsolating: true, error: undefined } : c));
     try {
-      const { base64Data, mimeType } = await isolateCharacter(character.imageUrl);
+      const { base64Data, mimeType, tokens, costBRL } = await isolateCharacter(character.imageUrl);
       const imageUrl = `data:${mimeType};base64,${base64Data}`;
       const { width, height } = await getImageDimensions(imageUrl);
-      
-      const updatedChar = { 
-        ...character, 
-        imageUrl, 
-        imageMimeType: mimeType, 
+
+      const updatedChar = {
+        ...character,
+        imageUrl,
+        imageMimeType: mimeType,
         isIsolating: false,
         imageWidth: width,
         imageHeight: height,
+        tokens,
+        costBRL,
+        modelUsed: 'gemini-2.5-flash-image',
         previousImageUrl: character.imageUrl,
         previousImageMimeType: character.imageMimeType
       };
@@ -424,7 +447,7 @@ const App: React.FC = () => {
     targetScene: Scene,
     allScenes: Scene[],
     allCharacters: Character[]
-  ): Promise<{ base64Data: string; mimeType: string; }> => {
+  ): Promise<{ base64Data: string; mimeType: string; tokens?: number; costBRL?: number; }> => {
     let sceneReference: { name: string, base64Data: string, mimeType: string } | undefined = undefined;
     const sceneIndex = allScenes.findIndex(s => s.id === targetScene.id);
   
@@ -462,13 +485,12 @@ const App: React.FC = () => {
   
     if (characterReferences.length > 0 || sceneReference) {
       // Prioritize the user-selected model if it supports references.
-      let modelToUse: string = 'gemini-2.5-flash-image';
-      
-      if (imageModel === 'gemini-3-pro-image-preview') {
-        modelToUse = 'gemini-3-pro-image-preview';
-      } else if (imageModel === 'gemini-2.5-flash-image') {
-        modelToUse = 'gemini-2.5-flash-image';
-      }
+      // Imagen 4 doesn't support multimodal input, so fall back to flash.
+      let modelToUse: string = imageModel === 'gemini-3-pro-image-preview'
+        ? 'gemini-3-pro-image-preview'
+        : imageModel === 'gemini-3.1-flash-image-preview'
+          ? 'gemini-3.1-flash-image-preview'
+          : 'gemini-2.5-flash-image';
 
       return generateSceneImage(prompt, characterReferences, aspectRatio, generalContext, sceneReference, modelToUse, resolution);
     } else {
@@ -510,7 +532,7 @@ const App: React.FC = () => {
         }
       }
 
-      const { base64Data, mimeType } = await generateImageForScene(originalScene, scenesSnapshot, characters);
+      const { base64Data, mimeType, tokens, costBRL } = await generateImageForScene(originalScene, scenesSnapshot, characters);
       const newImageUrl = `data:${mimeType};base64,${base64Data}`;
       const { width, height } = await getImageDimensions(newImageUrl);
 
@@ -523,6 +545,9 @@ const App: React.FC = () => {
                   isLoading: false,
                   imageWidth: width,
                   imageHeight: height,
+                  tokens,
+                  costBRL,
+                  modelUsed: imageModel,
                   previousImageUrl: s.imageUrl,
                   previousImageMimeType: s.imageMimeType
               };
@@ -536,6 +561,219 @@ const App: React.FC = () => {
         setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isLoading: false, error: errorMessage } : s));
     }
   }, [scenes, characters, aspectRatio, generalContext, imageModel, numberOfImages, resolution]);
+
+  // "Gerar Novamente" com região de referência selecionada pelo usuário
+  const handleGenerateSceneImageWithReference = useCallback(async (
+    sceneId: number,
+    overridePrompt: string,
+    croppedBase64: string | null,
+    croppedMimeType: string | null,
+    extraReferences?: { base64Data: string; mimeType: string }[],
+    blendInstruction?: string,
+  ) => {
+    const scenesSnapshot = scenes;
+    const originalScene = scenesSnapshot.find(s => s.id === sceneId);
+    if (!originalScene) return;
+
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isLoading: true, error: undefined } : s));
+
+    try {
+      const characterNamesInScene = [...new Set((originalScene.tagged_description.match(/\[(.*?)\]/g) || [])
+        .map((tag: string) => tag.slice(1, -1)))];
+
+      const characterReferences = characters
+        .filter(char => characterNamesInScene.includes(char.name) && char.imageUrl && char.imageMimeType)
+        .map(char => {
+          const parts = char.imageUrl!.split(',');
+          return { name: char.name, base64Data: parts[1], mimeType: char.imageMimeType! };
+        });
+
+      // A região recortada pelo usuário vira a referência visual da cena
+      const sceneReference = croppedBase64 && croppedMimeType
+        ? { name: 'region_reference', base64Data: croppedBase64, mimeType: croppedMimeType }
+        : undefined;
+
+      let base64Data: string;
+      let mimeType: string;
+      let tokens: number | undefined;
+      let costBRL: number | undefined;
+
+      if (characterReferences.length > 0 || sceneReference) {
+        const modelToUse = imageModel === 'gemini-3-pro-image-preview'
+          ? 'gemini-3-pro-image-preview'
+          : imageModel === 'gemini-3.1-flash-image-preview'
+            ? 'gemini-3.1-flash-image-preview'
+            : 'gemini-2.5-flash-image';
+        const result = await generateSceneImage(
+          overridePrompt, characterReferences, aspectRatio,
+          generalContext, sceneReference, modelToUse, resolution,
+          extraReferences, blendInstruction
+        );
+        base64Data = result.base64Data;
+        mimeType = result.mimeType;
+        tokens = result.tokens;
+        costBRL = result.costBRL;
+      } else {
+        const result = await generateImage(overridePrompt, imageModel, aspectRatio, numberOfImages, generalContext, resolution);
+        base64Data = result.base64Data;
+        mimeType = result.mimeType;
+        tokens = result.tokens;
+        costBRL = result.costBRL;
+      }
+
+      const newImageUrl = `data:${mimeType};base64,${base64Data}`;
+      const { width, height } = await getImageDimensions(newImageUrl);
+
+      setScenes(prev => prev.map(s => {
+        if (s.id === sceneId) {
+          return {
+            ...s,
+            imageUrl: newImageUrl,
+            imageMimeType: mimeType,
+            isLoading: false,
+            imageWidth: width,
+            imageHeight: height,
+            tokens,
+            costBRL,
+            modelUsed: imageModel,
+            previousImageUrl: s.imageUrl,
+            previousImageMimeType: s.imageMimeType,
+          };
+        }
+        return s;
+      }));
+    } catch (e: any) {
+      console.error(`Falha ao gerar imagem com referência para a cena ${sceneId}`, e);
+      const errorMessage = e instanceof Error ? e.message : 'Ocorreu um erro desconhecido.';
+      setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isLoading: false, error: errorMessage } : s));
+    }
+  }, [scenes, characters, aspectRatio, generalContext, imageModel, numberOfImages, resolution]);
+
+  // Editar qualquer imagem do projeto (personagem ou cena, incluindo versão anterior)
+  const handleEditProjectImage = useCallback(async (
+    item: ProjectImageItem,
+    sourceUrl: string,
+    _sourceMimeType: string,
+    prompt: string
+  ) => {
+    setIsGalleryEditing(true);
+    try {
+      const { base64Data, mimeType } = await editImage(sourceUrl, prompt, generalContext);
+      const newImageUrl = `data:${mimeType};base64,${base64Data}`;
+      const { width, height } = await getImageDimensions(newImageUrl);
+
+      if (item.itemType === 'character') {
+        setCharacters(prev => prev.map(c => {
+          if (c.name === item.itemKey) {
+            return {
+              ...c,
+              previousImageUrl: c.imageUrl,
+              previousImageMimeType: c.imageMimeType,
+              imageUrl: newImageUrl,
+              imageMimeType: mimeType,
+              imageWidth: width,
+              imageHeight: height,
+            };
+          }
+          return c;
+        }));
+      } else {
+        setScenes(prev => prev.map(s => {
+          if (s.id === item.itemKey) {
+            return {
+              ...s,
+              previousImageUrl: s.imageUrl,
+              previousImageMimeType: s.imageMimeType,
+              imageUrl: newImageUrl,
+              imageMimeType: mimeType,
+              imageWidth: width,
+              imageHeight: height,
+            };
+          }
+          return s;
+        }));
+      }
+    } finally {
+      setIsGalleryEditing(false);
+    }
+  }, [generalContext]);
+
+  const handleSplitScene = useCallback(async (sceneId: number, count: number, instructions: string) => {
+    const scene = scenes.find(s => s.id === sceneId);
+    if (!scene) return;
+
+    // Fase 1: gera os sub-prompts via IA
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isSplitting: true, splitImages: undefined } : s));
+
+    let subPrompts: string[];
+    try {
+      subPrompts = await generateSplitPrompts(scene.image_prompt, generalContext, count, instructions);
+    } catch (e: any) {
+      setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, isSplitting: false } : s));
+      console.error('Falha ao gerar sub-prompts:', e);
+      return;
+    }
+
+    // Fase 2: inicializa o array de split images com loading
+    const initialSplitImages: SplitImage[] = subPrompts.map((prompt, i) => ({
+      id: `${sceneId}-split-${Date.now()}-${i}`,
+      prompt,
+      isLoading: true,
+    }));
+    setScenes(prev => prev.map(s =>
+      s.id === sceneId ? { ...s, isSplitting: false, splitImages: initialSplitImages } : s
+    ));
+
+    // Prepara referências de personagens da cena
+    const characterNamesInScene = [...new Set((scene.tagged_description.match(/\[(.*?)\]/g) || [])
+      .map((tag: string) => tag.slice(1, -1)))];
+    const characterReferences = characters
+      .filter(c => characterNamesInScene.includes(c.name) && c.imageUrl && c.imageMimeType)
+      .map(c => ({ name: c.name, base64Data: c.imageUrl!.split(',')[1], mimeType: c.imageMimeType! }));
+
+    // Fase 3: gera cada imagem individualmente
+    for (let i = 0; i < subPrompts.length; i++) {
+      try {
+        let result: { base64Data: string; mimeType: string; tokens?: number; costBRL?: number };
+        if (characterReferences.length > 0) {
+          const modelToUse = imageModel === 'gemini-3-pro-image-preview'
+            ? 'gemini-3-pro-image-preview'
+            : imageModel === 'gemini-3.1-flash-image-preview'
+              ? 'gemini-3.1-flash-image-preview'
+              : 'gemini-2.5-flash-image';
+          result = await generateSceneImage(subPrompts[i], characterReferences, aspectRatio, generalContext, undefined, modelToUse, resolution);
+        } else {
+          result = await generateImage(subPrompts[i], imageModel, aspectRatio, 1, generalContext, resolution);
+        }
+        const imageUrl = `data:${result.mimeType};base64,${result.base64Data}`;
+        setScenes(prev => prev.map(s => {
+          if (s.id !== sceneId) return s;
+          const usedModel = characterReferences.length > 0
+            ? (imageModel === 'gemini-3-pro-image-preview' ? 'gemini-3-pro-image-preview'
+              : imageModel === 'gemini-3.1-flash-image-preview' ? 'gemini-3.1-flash-image-preview'
+              : 'gemini-2.5-flash-image')
+            : imageModel;
+          const updated = (s.splitImages || []).map((img, idx) =>
+            idx === i ? { ...img, imageUrl, imageMimeType: result.mimeType, isLoading: false, tokens: result.tokens, costBRL: result.costBRL, modelUsed: usedModel } : img
+          );
+          return { ...s, splitImages: updated };
+        }));
+      } catch (e: any) {
+        const errorMessage = e instanceof Error ? e.message : 'Erro ao gerar imagem.';
+        setScenes(prev => prev.map(s => {
+          if (s.id !== sceneId) return s;
+          const updated = (s.splitImages || []).map((img, idx) =>
+            idx === i ? { ...img, isLoading: false, error: errorMessage } : img
+          );
+          return { ...s, splitImages: updated };
+        }));
+      }
+    }
+  }, [scenes, characters, aspectRatio, generalContext, imageModel, resolution]);
+
+  const handleClearSplit = useCallback((sceneId: number) => {
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, splitImages: undefined } : s));
+  }, []);
 
   const handleCharacterDescriptionChange = useCallback((name: string, newDescription: string) => {
     setCharacters(prev => prev.map(c => c.name === name ? { ...c, physical_characteristics: newDescription } : c));
@@ -770,7 +1008,7 @@ const App: React.FC = () => {
           const scenesWithPaths = scenes.map(item => {
               let newItem = { ...item };
               const sceneFolderName = `Cena_${item.scene_id}`;
-              
+
               if (item.imageUrl && item.imageMimeType) {
                   const extension = item.imageMimeType.split('/')[1] || 'png';
                   const imageName = `Img ${item.order}`;
@@ -788,6 +1026,22 @@ const App: React.FC = () => {
                   zip.file(fileName, base64Data, { base64: true });
                   newItem.previousImageUrl = fileName;
               }
+
+              // ── Planos divididos (split images) ──
+              if (item.splitImages && item.splitImages.length > 0) {
+                  newItem.splitImages = item.splitImages.map((img, idx) => {
+                      const newImg = { ...img };
+                      if (img.imageUrl && img.imageMimeType) {
+                          const extension = img.imageMimeType.split('/')[1] || 'png';
+                          const fileName = `cenas/${sceneFolderName}/plano_${idx + 1}.${extension}`;
+                          const base64Data = img.imageUrl.split(',')[1];
+                          zip.file(fileName, base64Data, { base64: true });
+                          newImg.imageUrl = fileName;
+                      }
+                      return newImg;
+                  });
+              }
+
               return newItem;
           });
 
@@ -893,6 +1147,20 @@ const App: React.FC = () => {
         const loadedScenes = await Promise.all(projectState.scenes.map(async (scene) => {
             const mainImage = await loadImageFromZip(scene.imageUrl);
             const prevImage = await loadImageFromZip(scene.previousImageUrl);
+
+            // ── Restaura split images do zip ──
+            const loadedSplitImages = scene.splitImages && scene.splitImages.length > 0
+                ? await Promise.all(scene.splitImages.map(async (img) => {
+                    if (!img.imageUrl) return img;
+                    const loaded = await loadImageFromZip(img.imageUrl);
+                    return {
+                        ...img,
+                        imageUrl: loaded?.url,
+                        imageMimeType: loaded?.mime,
+                    };
+                }))
+                : scene.splitImages;
+
             return {
                 ...scene,
                 imageUrl: mainImage?.url,
@@ -901,6 +1169,7 @@ const App: React.FC = () => {
                 imageHeight: mainImage?.height,
                 previousImageUrl: prevImage?.url,
                 previousImageMimeType: prevImage?.mime,
+                splitImages: loadedSplitImages,
             };
         }));
 
@@ -1310,25 +1579,55 @@ const App: React.FC = () => {
             <section className="mb-10 p-6 bg-slate-800 border border-slate-700 rounded-xl">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-2xl font-bold text-slate-100">Configurações de Geração</h2>
-                <button
-                    onClick={handleExportProject}
-                    disabled={isDownloading}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-100 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:bg-slate-600 disabled:cursor-wait transition-colors"
-                    title="Salvar todo o projeto (prompts, imagens, configurações) como um arquivo .zip"
-                >
-                    {isDownloading ? (
-                        <div className="w-5 h-5 border-2 border-slate-200/50 border-t-slate-200 rounded-full animate-spin"></div>
-                    ) : (
-                        <ArchiveIcon />
-                    )}
-                    <span>{isDownloading ? 'Exportando...' : 'Exportar Projeto (.zip)'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsGalleryOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-100 bg-indigo-700 rounded-lg hover:bg-indigo-600 transition-colors"
+                    title="Ver e editar todas as imagens geradas no projeto"
+                  >
+                    <GalleryIcon width={16} height={16} />
+                    <span>Galeria do Projeto</span>
+                  </button>
+                  <button
+                      onClick={handleExportProject}
+                      disabled={isDownloading}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-100 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:bg-slate-600 disabled:cursor-wait transition-colors"
+                      title="Salvar todo o projeto (prompts, imagens, configurações) como um arquivo .zip"
+                  >
+                      {isDownloading ? (
+                          <div className="w-5 h-5 border-2 border-slate-200/50 border-t-slate-200 rounded-full animate-spin"></div>
+                      ) : (
+                          <ArchiveIcon />
+                      )}
+                      <span>{isDownloading ? 'Exportando...' : 'Exportar Projeto (.zip)'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Tabela de custos por modelo ── */}
+              <div className="mt-6 p-3 bg-slate-900/60 border border-slate-700/60 rounded-lg">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Custo estimado por modelo</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { label: 'Flash 2.5', model: 'gemini-2.5-flash-image',         priceUSD: '$0,060/1K tk', priceBRL: '≈ R$0,005/tk',  note: 'Rápido · multimodal' },
+                    { label: 'Flash 3.1', model: 'gemini-3.1-flash-image-preview', priceUSD: '$0,060/1K tk', priceBRL: '≈ R$0,005/tk',  note: 'Novo · multimodal' },
+                    { label: 'Pro 3',     model: 'gemini-3-pro-image-preview',     priceUSD: '$0,030/1K tk', priceBRL: '≈ R$0,003/tk',  note: 'Alta fidelidade' },
+                    { label: 'Imagen 4',  model: 'imagen-4.0-generate-001',        priceUSD: '$0,040/img',   priceBRL: '≈ R$0,232/img', note: 'Preço fixo/imagem' },
+                  ].map(({ label, priceUSD, priceBRL, note }) => (
+                    <div key={label} className="flex flex-col gap-0.5 bg-slate-800/80 rounded-md px-3 py-2 border border-slate-700/40">
+                      <span className="text-xs font-bold text-cyan-400">{label}</span>
+                      <span className="text-xs font-mono text-emerald-400">{priceBRL}</span>
+                      <span className="text-xs text-slate-500">{priceUSD}</span>
+                      <span className="text-xs text-slate-600 mt-0.5">{note}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-6 mt-6">
                 <div className="space-y-2">
                   <label htmlFor="character-image-model" className="text-sm font-medium text-slate-300">Modelo do Personagem</label>
-                  <select 
+                  <select
                     id="character-image-model"
                     value={characterImageModel}
                     onChange={(e) => {
@@ -1339,13 +1638,14 @@ const App: React.FC = () => {
                   >
                     <option value="imagen-4.0-generate-001">Imagen 4 (Alta Qualidade)</option>
                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Rápido)</option>
+                    <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image ✨ Novo</option>
                     <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (Alta Fidelidade)</option>
                   </select>
                 </div>
                 
                 <div className="space-y-2">
                   <label htmlFor="image-model" className="text-sm font-medium text-slate-300">Modelo da Cena</label>
-                  <select 
+                  <select
                     id="image-model"
                     value={imageModel}
                     onChange={(e) => {
@@ -1355,6 +1655,7 @@ const App: React.FC = () => {
                     className="bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-sm focus:ring-cyan-500 focus:border-cyan-500 w-full"
                   >
                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                    <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image ✨ Novo</option>
                     <option value="imagen-4.0-generate-001">Imagen 4 (Alta Qualidade)</option>
                     <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (Alta Fidelidade)</option>
                   </select>
@@ -1453,6 +1754,13 @@ const App: React.FC = () => {
                 >
                   Cenas <span className="text-sm text-slate-500">{scenes.length}</span>
                 </button>
+                <button
+                  onClick={() => setActiveView('costs')}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-lg font-medium rounded-t-lg transition-colors border-b-2 ${activeView === 'costs' ? 'border-emerald-400 text-emerald-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+                >
+                  <CostReportIcon width={18} height={18} />
+                  Custos
+                </button>
               </nav>
             </div>
 
@@ -1515,6 +1823,19 @@ const App: React.FC = () => {
               </section>
             )}
             
+            {activeView === 'costs' && (
+              <section>
+                <div className="flex items-center gap-3 mb-6 pb-2">
+                  <CostReportIcon className="text-emerald-400" width={28} height={28} />
+                  <div>
+                    <h2 className="text-3xl font-bold text-slate-100">Relatório de Custos</h2>
+                    <p className="text-sm text-slate-400 mt-0.5">Consumo de tokens e custo estimado por imagem gerada neste roteiro.</p>
+                  </div>
+                </div>
+                <CostReportView characters={characters} scenes={scenes} />
+              </section>
+            )}
+
             {activeView === 'scenes' && (
               <section>
                 <div className="flex flex-wrap items-center justify-between mb-6 pb-2">
@@ -1547,6 +1868,7 @@ const App: React.FC = () => {
                       availableStyles={availableStyles}
                       onImageUpdate={handleSceneImageUpdate}
                       onVisualize={handleGenerateSceneImage}
+                      onVisualizeWithReference={handleGenerateSceneImageWithReference}
                       editImageService={handleEditImageWrapper}
                       onPreview={handleImagePreview}
                       onPromptChange={handleScenePromptChange}
@@ -1556,6 +1878,8 @@ const App: React.FC = () => {
                       onUpdatePrompt={handleUpdateScenePrompt}
                       onRevertImage={handleRevertSceneImage}
                       onAnalyzeText={handleStartTextAnalysis}
+                      onSplitScene={handleSplitScene}
+                      onClearSplit={handleClearSplit}
                     />
                   ))}
                 </div>
@@ -1587,13 +1911,22 @@ const App: React.FC = () => {
       )}
 
       {isLoaded && (
-        <SettingsModal 
+        <SettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           initialSettings={settings}
           onSave={handleSaveSettings}
         />
       )}
+
+      <ProjectGalleryModal
+        isOpen={isGalleryOpen}
+        characters={characters}
+        scenes={scenes}
+        onClose={() => setIsGalleryOpen(false)}
+        onApplyEdit={handleEditProjectImage}
+        isEditing={isGalleryEditing}
+      />
     </div>
   );
 };

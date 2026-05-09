@@ -5,6 +5,8 @@ import type { Scene } from '../types';
 import { EditIcon, SparklesIcon, DownloadIcon, RevertIcon, TextAnalysisIcon, ReloadIcon } from './icons';
 import ImageLoader from './ImageLoader';
 import ImageEditModal from './ImageEditModal';
+import SceneReferenceModal from './SceneReferenceModal';
+import SceneSplitModal from './SceneSplitModal';
 
 interface SceneCardProps {
   scene: Scene;
@@ -13,6 +15,7 @@ interface SceneCardProps {
   availableStyles: string[];
   onImageUpdate: (id: number, newImageUrl: string, newMimeType: string) => void;
   onVisualize: (id: number) => void;
+  onVisualizeWithReference: (id: number, prompt: string, croppedBase64: string | null, croppedMimeType: string | null, extraReferences?: { base64Data: string; mimeType: string }[], blendInstruction?: string) => void;
   editImageService: (base64: string, prompt: string) => Promise<{ base64Data: string, mimeType: string }>;
   onPreview: (url: string) => void;
   onPromptChange: (id: number, newPrompt: string) => void;
@@ -22,15 +25,30 @@ interface SceneCardProps {
   onUpdatePrompt: (id: number) => void;
   onRevertImage: (id: number) => void;
   onAnalyzeText: (scene: Scene) => void;
+  onSplitScene: (sceneId: number, count: number, instructions: string) => void;
+  onClearSplit: (sceneId: number) => void;
 }
 
 const gcd = (a: number, b: number): number => {
   return b === 0 ? a : gcd(b, a % b);
 };
 
-const SceneCard: React.FC<SceneCardProps> = ({ scene, scenes, sceneIndex, availableStyles, onImageUpdate, onVisualize, editImageService, onPreview, onPromptChange, onStyleChange, onContinuationChange, onContinuationReferenceChange, onUpdatePrompt, onRevertImage, onAnalyzeText }) => {
+const modelLabelShort = (model: string): string => {
+  switch (model) {
+    case 'gemini-2.5-flash-image':         return 'Flash 2.5';
+    case 'gemini-3.1-flash-image-preview': return 'Flash 3.1';
+    case 'gemini-3-pro-image-preview':     return 'Pro 3';
+    case 'imagen-4.0-generate-001':        return 'Imagen 4';
+    default:                               return model.split('-')[0];
+  }
+};
+
+const SceneCard: React.FC<SceneCardProps> = ({ scene, scenes, sceneIndex, availableStyles, onImageUpdate, onVisualize, onVisualizeWithReference, editImageService, onPreview, onPromptChange, onStyleChange, onContinuationChange, onContinuationReferenceChange, onUpdatePrompt, onRevertImage, onAnalyzeText, onSplitScene, onClearSplit }) => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editState, setEditState] = useState<{ isLoading: boolean; error: string | null }>({ isLoading: false, error: null });
+    const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
+    const [referenceModalError, setReferenceModalError] = useState<string | null>(null);
+    const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
 
     // Removido o useMemo para garantir que o cálculo seja sempre executado em cada renderização relevante.
     // Como o próprio SceneCard é memoizado, isso só será executado quando os adereços (como 'cenas') mudarem, o que é o comportamento desejado.
@@ -112,13 +130,33 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, scenes, sceneIndex, availa
                             </span>
                         </div>
                     )}
-                    <div className="absolute top-2 left-2">
-                        <div className="group relative flex items-center">
-                            <span className="w-3 h-3 rounded-full bg-green-400 ring-2 ring-slate-900/50" />
-                            <div className="absolute bottom-full left-0 mb-1 w-max px-2 py-1 bg-slate-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    {/* ── Barra de status — topo esquerdo ── */}
+                    <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10">
+                        {/* Ponto verde com tooltip */}
+                        <div className="group/dot relative flex-shrink-0">
+                            <span className="w-3 h-3 rounded-full bg-green-400 ring-2 ring-slate-900/50 block" />
+                            <div className="absolute bottom-full left-0 mb-1 w-max px-2 py-1 bg-slate-900 text-white text-xs rounded-md opacity-0 group-hover/dot:opacity-100 transition-opacity pointer-events-none z-20">
                                 Imagem Gerada
                             </div>
                         </div>
+                        {/* Modelo + custo */}
+                        {(scene.costBRL !== undefined || scene.modelUsed) && (
+                            <div
+                                className="bg-black/70 backdrop-blur-sm text-xs px-2 py-0.5 rounded-md pointer-events-none flex items-center gap-1.5"
+                                title={scene.tokens ? `${scene.tokens.toLocaleString('pt-BR')} tokens de saída` : 'Custo estimado'}
+                            >
+                                {scene.modelUsed && (
+                                    <span className="text-cyan-400 font-medium">{modelLabelShort(scene.modelUsed)}</span>
+                                )}
+                                {scene.costBRL !== undefined && (
+                                    <>
+                                        {scene.modelUsed && <span className="text-slate-600">·</span>}
+                                        <span className="text-emerald-400">R${scene.costBRL.toFixed(3).replace('.', ',')}</span>
+                                        {scene.tokens && <span className="text-slate-500 ml-0.5">{(scene.tokens / 1000).toFixed(1)}K tk</span>}
+                                    </>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <div className="absolute top-2 right-2 flex items-center gap-2">
                          <button
@@ -339,14 +377,44 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, scenes, sceneIndex, availa
                     </div>
                     
                     {!scene.isLoading && scene.imageUrl && (
-                        <button
-                            onClick={() => onVisualize(scene.id)}
-                            disabled={isBusy || scene.isUpdatingPrompt || !referenceSceneData.isValid || referenceSceneData.isImageMissing}
-                            className="mt-4 w-full md:w-auto self-start flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
-                        >
-                        <SparklesIcon width={16} height={16} />
-                            Gerar Novamente
-                        </button>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {/* Gerar Novamente – abre modal de referência visual */}
+                            <button
+                                onClick={() => { setReferenceModalError(null); setIsReferenceModalOpen(true); }}
+                                disabled={isBusy || scene.isUpdatingPrompt}
+                                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-cyan-600 rounded-md hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
+                                title="Selecione uma região como referência ou ajuste o prompt"
+                            >
+                                <SparklesIcon width={16} height={16} />
+                                Gerar Novamente
+                            </button>
+                            {/* Regen rápido sem abrir modal */}
+                            <button
+                                onClick={() => onVisualize(scene.id)}
+                                disabled={isBusy || scene.isUpdatingPrompt || !referenceSceneData.isValid || referenceSceneData.isImageMissing}
+                                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-slate-300 bg-slate-700 rounded-md hover:bg-slate-600 disabled:bg-slate-700/50 disabled:cursor-not-allowed transition-colors"
+                                title="Regerar imagem diretamente sem selecionar referência"
+                            >
+                                <ReloadIcon width={14} height={14} />
+                                Rápido
+                            </button>
+                            {/* Dividir cena em múltiplos planos */}
+                            <button
+                                onClick={() => setIsSplitModalOpen(true)}
+                                disabled={isBusy || scene.isUpdatingPrompt || scene.isSplitting}
+                                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-slate-300 bg-slate-700 rounded-md hover:bg-indigo-600 hover:text-white disabled:bg-slate-700/50 disabled:cursor-not-allowed transition-colors"
+                                title="Dividir esta cena em múltiplos planos"
+                            >
+                                {scene.isSplitting ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-slate-300/50 border-t-slate-300 rounded-full animate-spin" />
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="2" y="3" width="9" height="18" rx="1"/><rect x="13" y="3" width="9" height="18" rx="1"/>
+                                    </svg>
+                                )}
+                                {scene.isSplitting ? 'Dividindo...' : 'Dividir'}
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
@@ -364,6 +432,129 @@ const SceneCard: React.FC<SceneCardProps> = ({ scene, scenes, sceneIndex, availa
                     error={editState.error}
                 />
             )}
+
+            {/* ── Grid de planos divididos ── */}
+            {scene.splitImages && scene.splitImages.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-700/60">
+                    <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="2" y="3" width="9" height="18" rx="1"/><rect x="13" y="3" width="9" height="18" rx="1"/>
+                            </svg>
+                            Planos gerados ({scene.splitImages.length})
+                        </h4>
+                        <button
+                            onClick={() => onClearSplit(scene.id)}
+                            className="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                        >
+                            ✕ Limpar
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {scene.splitImages.map((img, idx) => (
+                            <div key={img.id} className="relative rounded-lg overflow-hidden bg-slate-900 border border-slate-700 group">
+                                {img.isLoading ? (
+                                    <div className="aspect-video flex flex-col items-center justify-center gap-2 p-2">
+                                        <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                                        <p className="text-xs text-slate-500">Plano {idx + 1}</p>
+                                    </div>
+                                ) : img.error ? (
+                                    <div className="aspect-video flex flex-col items-center justify-center p-2 text-center">
+                                        <p className="text-xs text-red-400">Erro</p>
+                                        <p className="text-xs text-red-300 mt-1 line-clamp-2">{img.error}</p>
+                                    </div>
+                                ) : img.imageUrl ? (
+                                    <>
+                                        <button onClick={() => onPreview(img.imageUrl!)} className="block w-full">
+                                            <img
+                                                src={img.imageUrl}
+                                                alt={`Plano ${idx + 1}`}
+                                                className="w-full aspect-video object-cover transition-transform group-hover:scale-105"
+                                            />
+                                        </button>
+                                        {/* Prompt tooltip on hover */}
+                                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <p className="text-xs text-white line-clamp-2 leading-tight">{img.prompt}</p>
+                                        </div>
+                                        {/* Download button */}
+                                        <button
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                const ext = (img.imageMimeType ?? 'image/png').split('/')[1] || 'png';
+                                                const filename = `Cena_${scene.scene_id}-${scene.sub_id}_plano_${idx + 1}.${ext}`;
+                                                const link = document.createElement('a');
+                                                link.href = img.imageUrl!;
+                                                link.download = filename;
+                                                document.body.appendChild(link);
+                                                link.click();
+                                                document.body.removeChild(link);
+                                            }}
+                                            className="absolute top-1.5 right-1.5 p-1.5 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-600"
+                                            title="Baixar plano"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                                            </svg>
+                                        </button>
+                                        {/* Número do plano + modelo + custo */}
+                                        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 flex-wrap">
+                                            <div className="bg-black/60 text-white text-xs px-1.5 py-0.5 rounded font-medium">
+                                                {idx + 1}
+                                            </div>
+                                            {(img.modelUsed || img.costBRL !== undefined) && (
+                                                <div
+                                                    className="bg-black/70 text-xs px-1.5 py-0.5 rounded flex items-center gap-1"
+                                                    title={img.tokens ? `${img.tokens.toLocaleString('pt-BR')} tokens` : 'Custo estimado'}
+                                                >
+                                                    {img.modelUsed && <span className="text-cyan-400">{modelLabelShort(img.modelUsed)}</span>}
+                                                    {img.costBRL !== undefined && (
+                                                        <span className="text-emerald-400">R${img.costBRL.toFixed(3).replace('.', ',')}</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : null}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de referência visual para geração */}
+            {scene.imageUrl && (
+                <SceneReferenceModal
+                    isOpen={isReferenceModalOpen}
+                    imageUrl={scene.imageUrl}
+                    currentPrompt={scene.image_prompt}
+                    currentSceneId={scene.id}
+                    scenes={scenes}
+                    isGenerating={scene.isLoading ?? false}
+                    error={referenceModalError}
+                    onClose={() => {
+                        if (!scene.isLoading) {
+                            setIsReferenceModalOpen(false);
+                            setReferenceModalError(null);
+                        }
+                    }}
+                    onGenerate={({ prompt, croppedBase64, croppedMimeType, extraReferences, blendInstruction }) => {
+                        setReferenceModalError(null);
+                        onVisualizeWithReference(scene.id, prompt, croppedBase64, croppedMimeType, extraReferences, blendInstruction);
+                        setIsReferenceModalOpen(false);
+                    }}
+                />
+            )}
+            {/* Modal de divisão em planos */}
+            <SceneSplitModal
+                isOpen={isSplitModalOpen}
+                sceneLabel={`Cena ${scene.scene_id}-${scene.sub_id} · ${scene.original_location}`}
+                isGenerating={scene.isSplitting ?? false}
+                onClose={() => { if (!scene.isSplitting) setIsSplitModalOpen(false); }}
+                onGenerate={(count, instructions) => {
+                    setIsSplitModalOpen(false);
+                    onSplitScene(scene.id, count, instructions);
+                }}
+            />
         </>
     );
 };

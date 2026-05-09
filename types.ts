@@ -1,5 +1,5 @@
 // fix: Add ImageModel type definition.
-export type ImageModel = 'gemini-2.5-flash-image' | 'imagen-4.0-generate-001' | 'gemini-3-pro-image-preview';
+export type ImageModel = 'gemini-2.5-flash-image' | 'gemini-3.1-flash-image-preview' | 'imagen-4.0-generate-001' | 'gemini-3-pro-image-preview';
 
 // fix: Add CsvRow interface definition.
 export interface CsvRow {
@@ -20,12 +20,27 @@ export interface Character {
   imageMimeType?: string;
   imageWidth?: number;
   imageHeight?: number;
+  tokens?: number;
+  costBRL?: number;
+  modelUsed?: string;
   isLoading?: boolean;
   isIsolating?: boolean;
   isAnalyzingText?: boolean;
   error?: string;
   previousImageUrl?: string;
   previousImageMimeType?: string;
+}
+
+export interface SplitImage {
+  id: string;
+  prompt: string;
+  imageUrl?: string;
+  imageMimeType?: string;
+  tokens?: number;
+  costBRL?: number;
+  modelUsed?: string;
+  isLoading?: boolean;
+  error?: string;
 }
 
 // fix: Add Scene interface definition.
@@ -45,12 +60,17 @@ export interface Scene {
   imageMimeType?: string;
   imageWidth?: number;
   imageHeight?: number;
+  tokens?: number;
+  costBRL?: number;
+  modelUsed?: string;
   isLoading?: boolean;
   isUpdatingPrompt?: boolean;
   isAnalyzingText?: boolean;
+  isSplitting?: boolean;
   error?: string;
   previousImageUrl?: string;
   previousImageMimeType?: string;
+  splitImages?: SplitImage[];
 }
 
 // fix: Add SavedAnalysis interface definition.

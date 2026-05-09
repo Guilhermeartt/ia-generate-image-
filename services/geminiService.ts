@@ -1,12 +1,31 @@
 import { GoogleGenAI, Type, Modality, GenerateContentResponse, GenerateImagesResponse } from '@google/genai';
 import type { Character, ImageModel, TextAnalysisResult } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("A variável de ambiente API_KEY não está definida.");
-}
+// ── Pricing constants (as of May 2026) ──────────────────────────────────────
+// Flash image models: $0.060 per 1K output tokens
+// Pro image model:    $0.030 per 1K output tokens
+// Imagen 4:           $0.040 fixed per image (no token count)
+const MODEL_PRICE_PER_TOKEN: Record<string, number> = {
+  'gemini-2.5-flash-image':           0.060 / 1000,
+  'gemini-3.1-flash-image-preview':   0.060 / 1000,
+  'gemini-3-pro-image-preview':       0.030 / 1000,
+};
+const USD_TO_BRL = 5.80;
+const IMAGEN_COST_USD = 0.040;
+
+const calcCost = (model: string, tokens: number): { tokens: number; costBRL: number } => {
+  const pricePerToken = MODEL_PRICE_PER_TOKEN[model] ?? (0.060 / 1000);
+  return { tokens, costBRL: parseFloat((tokens * pricePerToken * USD_TO_BRL).toFixed(4)) };
+};
 
 // Re-instantiate the client on each call to ensure the latest API Key is used if needed
-const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("A variável de ambiente GEMINI_API_KEY não está definida. Crie um arquivo .env.local com GEMINI_API_KEY=sua_chave.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 const callGeminiWithRetry = async <T>(
   apiCall: () => Promise<T>,
@@ -182,13 +201,13 @@ export const analyzeScene = async (
 };
 
 export const generateImage = async (
-    prompt: string, 
-    imageModel: ImageModel, 
-    aspectRatio?: string, 
-    numberOfImages: number = 1, 
+    prompt: string,
+    imageModel: ImageModel,
+    aspectRatio?: string,
+    numberOfImages: number = 1,
     generalContext?: string,
     resolution: '1K' | '2K' | '4K' = '1K'
-): Promise<{ base64Data: string; mimeType: string; }> => {
+): Promise<{ base64Data: string; mimeType: string; tokens?: number; costBRL?: number; }> => {
   let finalPrompt = prompt;
 
   if (generalContext) {
@@ -219,17 +238,18 @@ export const generateImage = async (
           return {
               base64Data: image,
               mimeType: 'image/png',
+              costBRL: parseFloat((IMAGEN_COST_USD * USD_TO_BRL).toFixed(4)),
           };
       }
-      
+
       // Use type casting to access promptFeedback which might not be in the strictest type definition yet
       const blockReason = (response as any).promptFeedback?.blockReason;
       if (blockReason) {
           throw new Error(`A geração de imagem foi bloqueada. Motivo: ${blockReason}. Por favor, ajuste o prompt.`);
       }
 
-  } 
-  
+  }
+
   // === Strategy: Gemini 3 Pro (Uses Image Config) ===
   else if (imageModel === 'gemini-3-pro-image-preview') {
        const validRatios = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -249,11 +269,14 @@ export const generateImage = async (
       }));
 
       // Search all parts for inline data
+      const outputTokens3Pro = response.usageMetadata?.candidatesTokenCount;
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
+            const costData = outputTokens3Pro ? calcCost('gemini-3-pro-image-preview', outputTokens3Pro) : {};
             return {
                 base64Data: part.inlineData.data,
                 mimeType: part.inlineData.mimeType,
+                ...costData,
             };
         }
       }
@@ -270,29 +293,32 @@ export const generateImage = async (
         throw new Error(`A geração de imagem (3 Pro) falhou. Motivo: ${finishReason}.`);
       }
 
-  } 
-  
-  // === Strategy: Gemini 2.5 Flash (Uses Prompt Engineering + Modality) ===
+  }
+
+  // === Strategy: Gemini Flash models (Uses Prompt Engineering + Modality) ===
   else {
-      // Default to Flash Image
+      // Both gemini-2.5-flash-image and gemini-3.1-flash-image-preview use the same strategy
       if (aspectRatio) {
         const ratioInstruction = getAspectRatioPromptFragment(aspectRatio);
         finalPrompt = `INSTRUÇÃO CRÍTICA: Gere uma única imagem de alta qualidade com ${ratioInstruction}.\n\n${finalPrompt}`;
       }
-      
+
       const response = await callGeminiWithRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({
-          model: 'gemini-2.5-flash-image',
+          model: imageModel, // use the actual model (flash or 3.1-flash)
           contents: { parts: [{ text: finalPrompt }] },
           config: {
               responseModalities: [Modality.IMAGE],
           },
       }));
 
+      const outputTokensFlash = response.usageMetadata?.candidatesTokenCount;
       const part = response.candidates?.[0]?.content?.parts[0];
       if (part?.inlineData) {
+          const costData = outputTokensFlash ? calcCost(imageModel, outputTokensFlash) : {};
           return {
               base64Data: part.inlineData.data,
               mimeType: part.inlineData.mimeType,
+              ...costData,
           };
       }
       const blockReason = response.promptFeedback?.blockReason;
@@ -312,29 +338,34 @@ export const generateImage = async (
 };
 
 export const generateSceneImage = async (
-    prompt: string, 
-    characterReferences: { name: string; base64Data: string; mimeType: string; }[], 
-    aspectRatio: string, 
+    prompt: string,
+    characterReferences: { name: string; base64Data: string; mimeType: string; }[],
+    aspectRatio: string,
     generalContext?: string,
     sceneReference?: { base64Data: string; mimeType: string; },
     model: string = 'gemini-2.5-flash-image',
-    resolution: '1K' | '2K' | '4K' = '1K'
-): Promise<{ base64Data: string; mimeType: string; }> => {
-    
+    resolution: '1K' | '2K' | '4K' = '1K',
+    extraReferences?: { base64Data: string; mimeType: string; }[],
+    blendInstruction?: string,
+): Promise<{ base64Data: string; mimeType: string; tokens?: number; costBRL?: number; }> => {
+
     const imageParts = [];
     if (sceneReference) {
         imageParts.push({ inlineData: { data: sceneReference.base64Data, mimeType: sceneReference.mimeType } });
     }
     imageParts.push(...characterReferences.map(ref => ({
-        inlineData: {
-            data: ref.base64Data,
-            mimeType: ref.mimeType
-        }
+        inlineData: { data: ref.base64Data, mimeType: ref.mimeType }
     })));
+    // Extra object/style references appended after character refs
+    if (extraReferences && extraReferences.length > 0) {
+        imageParts.push(...extraReferences.map(ref => ({
+            inlineData: { data: ref.base64Data, mimeType: ref.mimeType }
+        })));
+    }
 
     // Prepare Prompt Text
     const contextHeader = generalContext ? `**Contexto Geral:** ${generalContext}\n\n` : '';
-    
+
     let sceneReferencePromptPart = '';
     if (sceneReference) {
         sceneReferencePromptPart = `- **Referência de Cena (primeira imagem):** Use-a para manter a continuidade do ambiente, iluminação e estilo visual. As ações e poses nesta imagem são do passado; não as copie.`;
@@ -345,13 +376,25 @@ export const generateSceneImage = async (
         const charInstructions = characterReferences.map((ref) =>
             `*   **[${ref.name}]:** Use a imagem de referência correspondente para replicar sua aparência exata (rosto, cabelo, roupas, etc.).`
         ).join('\n');
-
         characterReferencePromptPart = `- **Referências de Personagem (imagens seguintes):**\n${charInstructions}`;
     }
-    
+
+    let extraReferencesPromptPart = '';
+    if (extraReferences && extraReferences.length > 0) {
+        const startIndex = (sceneReference ? 1 : 0) + characterReferences.length + 1;
+        const refInstructions = extraReferences.map((_, i) =>
+            `*   **[Referência de Objeto ${i + 1} — imagem ${startIndex + i}]:** Incorpore os elementos visuais desta imagem na cena gerada, mantendo consistência de proporção, iluminação e estilo.`
+        ).join('\n');
+        extraReferencesPromptPart = `- **Referências de Objetos/Estilos Externos (últimas ${extraReferences.length} imagem${extraReferences.length > 1 ? 'ns' : ''}):**\n${refInstructions}`;
+        if (blendInstruction && blendInstruction.trim()) {
+            extraReferencesPromptPart += `\n  - **Instrução de mesclagem do usuário:** ${blendInstruction.trim()}`;
+        }
+    }
+
     const instructionParts = [
         sceneReferencePromptPart,
-        characterReferencePromptPart
+        characterReferencePromptPart,
+        extraReferencesPromptPart,
     ].filter(Boolean);
 
     const instructionsBlock = instructionParts.length > 0 
@@ -392,15 +435,18 @@ ${instructionsBlock}**Descrição da Nova Cena (Ação e Enquadramento):**
     }));
 
     // Robust check for image part (works for both models)
+    const sceneOutputTokens = response.usageMetadata?.candidatesTokenCount;
     for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
+            const costData = sceneOutputTokens ? calcCost(model, sceneOutputTokens) : {};
             return {
                 base64Data: part.inlineData.data,
                 mimeType: part.inlineData.mimeType,
+                ...costData,
             };
         }
     }
-    
+
     const blockReason = response.promptFeedback?.blockReason;
     if (blockReason) {
       throw new Error(`A geração de imagem com referências foi bloqueada. Motivo: ${blockReason}. Por favor, ajuste o prompt.`);
@@ -416,7 +462,7 @@ ${instructionsBlock}**Descrição da Nova Cena (Ação e Enquadramento):**
     throw new Error('A geração de imagem com referências falhou, nenhum dado de imagem foi recebido.');
 };
 
-export const editImage = async (base64ImageDataWithPrefix: string, prompt: string, generalContext?: string): Promise<{ base64Data: string; mimeType: string; }> => {
+export const editImage = async (base64ImageDataWithPrefix: string, prompt: string, generalContext?: string): Promise<{ base64Data: string; mimeType: string; tokens?: number; costBRL?: number; }> => {
   // Using Flash Image for editing is generally more consistent for instruction-based in-painting in this context
   const model = 'gemini-2.5-flash-image';
 
@@ -442,17 +488,20 @@ export const editImage = async (base64ImageDataWithPrefix: string, prompt: strin
     },
   }));
 
+  const editOutputTokens = response.usageMetadata?.candidatesTokenCount;
   const part = response.candidates?.[0]?.content?.parts[0];
   if (part?.inlineData) {
+    const costData = editOutputTokens ? calcCost('gemini-2.5-flash-image', editOutputTokens) : {};
     return {
       base64Data: part.inlineData.data,
       mimeType: part.inlineData.mimeType,
+      ...costData,
     };
   }
   throw new Error('A edição de imagem falhou, nenhum dado de imagem foi recebido.');
 };
 
-export const isolateCharacter = async (base64ImageDataWithPrefix: string): Promise<{ base64Data: string; mimeType: string; }> => {
+export const isolateCharacter = async (base64ImageDataWithPrefix: string): Promise<{ base64Data: string; mimeType: string; tokens?: number; costBRL?: number; }> => {
   const model = 'gemini-2.5-flash-image';
 
   const parts = base64ImageDataWithPrefix.split(',');
@@ -474,11 +523,14 @@ export const isolateCharacter = async (base64ImageDataWithPrefix: string): Promi
     },
   }));
 
+  const isolateOutputTokens = response.usageMetadata?.candidatesTokenCount;
   const part = response.candidates?.[0]?.content?.parts[0];
   if (part?.inlineData) {
+    const costData = isolateOutputTokens ? calcCost('gemini-2.5-flash-image', isolateOutputTokens) : {};
     return {
       base64Data: part.inlineData.data,
       mimeType: part.inlineData.mimeType,
+      ...costData,
     };
   }
   throw new Error('O isolamento do personagem falhou, nenhum dado de imagem foi recebido.');
@@ -536,6 +588,48 @@ Responda APENAS com o objeto JSON.`;
   } catch(e) {
     console.error("Failed to parse JSON from Gemini text analysis:", jsonText);
     throw new Error("Não foi possível analisar o texto da imagem. O modelo retornou um formato inválido.");
+  }
+};
+
+export const generateSplitPrompts = async (
+  originalPrompt: string,
+  generalContext: string,
+  count: number,
+  instructions: string
+): Promise<string[]> => {
+  const model = 'gemini-2.5-pro';
+
+  const systemPrompt = `Você é um diretor de fotografia decompondo uma cena em ${count} planos individuais distintos.
+
+Dado o prompt de imagem de uma cena, crie exatamente ${count} sub-prompts, cada um descrevendo um plano (shot) diferente dentro da mesma cena.
+Cada sub-prompt deve capturar um ângulo diferente, tipo de enquadramento, detalhe ou momento específico — juntos eles contam a história completa da cena.
+Os sub-prompts devem ser em inglês, detalhados e prontos para geração de imagem direta.
+${instructions ? `Instrução adicional do usuário: ${instructions}` : ''}
+
+Contexto geral da história: ${generalContext || 'Não fornecido'}
+
+Prompt original da cena:
+${originalPrompt}
+
+Retorne APENAS um array JSON com exatamente ${count} strings. Sem markdown, sem explicação. Exemplo: ["cinematic close-up...", "wide establishing shot..."]`;
+
+  const response = await callGeminiWithRetry<GenerateContentResponse>(() => getAiClient().models.generateContent({
+    model,
+    contents: systemPrompt,
+  }));
+
+  const text = response.text?.trim() || '';
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('Falha ao gerar sub-prompts para divisão da cena.');
+
+  try {
+    const prompts: string[] = JSON.parse(match[0]);
+    if (!Array.isArray(prompts) || prompts.length < count) {
+      throw new Error('Número insuficiente de sub-prompts gerados.');
+    }
+    return prompts.slice(0, count);
+  } catch {
+    throw new Error('Falha ao interpretar os sub-prompts gerados.');
   }
 };
 
