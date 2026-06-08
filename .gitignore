@@ -12,6 +12,23 @@ dist
 dist-ssr
 *.local
 
+# Python virtual env
+.venv-sam2/
+__pycache__/
+*.pyc
+
+# Banco de dados local e dados sensíveis
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Histórico migrado / artefatos locais
+migrated_prompt_history/
+
+# Configurações locais do Claude Code
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

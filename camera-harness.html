@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Preview do Controle 3D</title>
+    <style>
+      :root {
+        --border: rgba(148, 163, 184, 0.18);
+        --border-md: rgba(148, 163, 184, 0.28);
+        --text-3: #CBD5E1;
+        --text-4: #94A3B8;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #111827;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .btn {
+        border-radius: 6px;
+        border: 1px solid var(--border-md);
+        background: rgba(15, 23, 42, 0.7);
+      }
+      .btn-ghost {
+        color: var(--text-3);
+      }
+      #root {
+        width: min(760px, calc(100vw - 32px));
+        padding: 18px;
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.86);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React, { useState } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import CameraPositionControl from './components/CameraPositionControl.tsx';
+
+      function App() {
+        const [position, setPosition] = useState('front');
+        const [height, setHeight] = useState('eye');
+
+        return React.createElement(CameraPositionControl, {
+          position,
+          height,
+          onChange: (nextPosition, nextHeight) => {
+            setPosition(nextPosition);
+            setHeight(nextHeight);
+          },
+        });
+      }
+
+      createRoot(document.getElementById('root')).render(React.createElement(App));
+    </script>
+  </body>
+</html>

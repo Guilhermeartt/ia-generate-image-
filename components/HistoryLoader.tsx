@@ -8,41 +8,73 @@ interface HistoryLoaderProps {
   onClear: () => void;
 }
 
-const HistoryLoader: React.FC<HistoryLoaderProps> = ({ history, onLoad, onClear }) => {
-  if (history.length === 0) {
-    return null;
-  }
+const formatRelativeTime = (timestamp: number): string => {
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
 
+  if (minutes < 1) return 'agora mesmo';
+  if (minutes < 60) return `há ${minutes} min`;
+  if (hours < 24) return `há ${hours}h`;
+  if (days === 1) return 'ontem';
+  return new Date(timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+};
+
+const HistoryLoader: React.FC<HistoryLoaderProps> = ({ history, onLoad, onClear }) => {
   return (
-    <div className="max-w-2xl mx-auto mt-12">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-slate-300 flex items-center gap-2">
-            <HistoryIcon width={20} height={20} />
-            Análises Recentes
-        </h2>
-        <button onClick={onClear} className="text-xs text-slate-500 hover:text-red-400 transition-colors">
-          Limpar Histórico
-        </button>
+    <section className="recent-projects-section">
+      <div className="section-hd" style={{ marginBottom: 12 }}>
+        <div>
+          <p className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <HistoryIcon width={15} height={15} style={{ color: 'var(--cyan)' }} />
+            Projetos recentes
+          </p>
+          <p className="section-sub">Retome análises salvas neste navegador.</p>
+        </div>
+        {history.length > 0 && (
+          <button
+            onClick={onClear}
+            className="btn btn-ghost"
+            style={{ fontSize: 12 }}
+          >
+            Limpar
+          </button>
+        )}
       </div>
-      <div className="space-y-3">
-        {history.map((item) => (
-          <div key={item.timestamp} className="bg-slate-800 border border-slate-700 rounded-lg p-4 flex items-center justify-between hover:border-cyan-500/30 transition-colors">
-            <div>
-              <p className="font-semibold text-cyan-400">{item.fileName}</p>
-              <p className="text-xs text-slate-500">
-                Salvo em: {new Date(item.timestamp).toLocaleString()}
-              </p>
-            </div>
-            <button
-              onClick={() => onLoad(item.timestamp)}
-              className="px-4 py-2 text-sm font-semibold text-white bg-cyan-600 rounded-md hover:bg-cyan-700 transition-colors"
-            >
-              Carregar
+
+      {history.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-state-icon"><HistoryIcon width={18} height={18} /></span>
+          <strong>Nenhum projeto salvo ainda</strong>
+          <p>
+            Quando você analisar um roteiro, o projeto fica salvo neste navegador.
+            Entre com uma conta para salvar projetos na nuvem sem limites.
+          </p>
+        </div>
+      ) : (
+        <div className="recent-projects-grid">
+          {history.slice(0, 6).map((item) => (
+            <button key={item.timestamp} className="recent-project-card" onClick={() => onLoad(item.timestamp)}>
+              <span className="recent-project-icon">
+                <HistoryIcon width={15} height={15} />
+              </span>
+              <span className="recent-project-copy">
+                <strong>{item.fileName.replace(/\.[^/.]+$/, '')}</strong>
+                <span>
+                  {item.scenes.length} cena{item.scenes.length !== 1 ? 's' : ''}
+                  {' · '}
+                  {item.characters.length} personagem{item.characters.length !== 1 ? 's' : ''}
+                  {' · '}
+                  {formatRelativeTime(item.timestamp)}
+                </span>
+              </span>
+              <span className="recent-project-action">Abrir →</span>
             </button>
-          </div>
-        ))}
-      </div>
-    </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 };
 

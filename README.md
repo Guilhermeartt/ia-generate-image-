@@ -49,14 +49,19 @@ Crie um arquivo `.env.local` na raiz do projeto:
 
 ```
 GEMINI_API_KEY=sua_chave_aqui
+APP_SECRET=troque_por_um_segredo_longo
+APP_ENCRYPTION_KEY=troque_por_uma_chave_longa
+ADMIN_EMAILS=admin@seudominio.com
 ```
 
-> ⚠️ Nunca suba o arquivo `.env.local` para o repositório. Ele já está no `.gitignore`.
+> ⚠️ Nunca suba o arquivo `.env.local` para o repositório. A chave da plataforma é lida apenas pelo servidor Node.
+
+Também é possível usar a API Key própria do usuário pela tela de configurações. Nesse modo, o frontend envia essa chave para o servidor da aplicação apenas para executar a chamada ao Gemini.
 
 ### 4. Inicie o servidor de desenvolvimento
 
 ```bash
-npm run dev
+npm run dev:full
 ```
 
 Acesse **http://localhost:3000** no seu navegador.
@@ -218,7 +223,11 @@ projeto/
 
 | Variável | Obrigatório | Descrição |
 |---|---|---|
-| `GEMINI_API_KEY` | ✅ | Chave de API do Google Gemini (Google AI Studio) |
+| `GEMINI_API_KEY` | ✅ | Chave de API do Google Gemini usada pela plataforma |
+| `APP_SECRET` | ✅ em produção | Segredo usado para assinar tokens de sessão |
+| `APP_ENCRYPTION_KEY` | ✅ em produção | Chave usada para criptografar API Keys salvas pelos usuários |
+| `ADMIN_EMAILS` | Opcional | Lista separada por vírgula de e-mails com acesso ao painel admin |
+| `USD_TO_BRL` | Opcional | Cotação usada para estimar custo em BRL |
 
 ---
 

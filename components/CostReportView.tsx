@@ -5,6 +5,8 @@ interface CostReportViewProps {
   characters: Character[];
   scenes: Scene[];
   textCosts?: TextCostEntry[];
+  apiSourceLabel?: string;
+  apiSourceDescription?: string;
 }
 
 interface ImageEntry {
@@ -18,9 +20,9 @@ interface ImageEntry {
 }
 
 const MODEL_LABELS: Record<string, string> = {
-  'gemini-2.5-flash-image':         'Flash 2.5',
-  'gemini-3.1-flash-image-preview': 'Flash 3.1',
-  'gemini-3-pro-image-preview':     'Pro 3',
+  'gemini-2.5-flash-image':         'Nano Banana 2.5',
+  'gemini-3.1-flash-image-preview': 'Nano Banana 3.1',
+  'gemini-3-pro-image-preview':     'Nano Banana Pro',
   'imagen-4.0-generate-001':        'Imagen 4',
 };
 
@@ -41,7 +43,13 @@ const TEXT_MODEL_LABELS: Record<string, string> = {
   'gemini-2.5-flash': 'Flash 2.5',
 };
 
-const CostReportView: React.FC<CostReportViewProps> = ({ characters, scenes, textCosts = [] }) => {
+const CostReportView: React.FC<CostReportViewProps> = ({
+  characters,
+  scenes,
+  textCosts = [],
+  apiSourceLabel = 'Origem da IA não definida',
+  apiSourceDescription = 'Configure a IA para registrar corretamente a origem das chamadas.',
+}) => {
   const { entries, totalCost, totalTokens, totalImages, modelBreakdown } = useMemo(() => {
     const entries: ImageEntry[] = [];
 
@@ -49,6 +57,17 @@ const CostReportView: React.FC<CostReportViewProps> = ({ characters, scenes, tex
       if (char.imageUrl) entries.push({
         label: char.name, sublabel: 'Personagem', type: 'character',
         modelUsed: char.modelUsed, tokens: char.tokens, costBRL: char.costBRL, imageUrl: char.imageUrl,
+      });
+      char.imageHistory?.forEach((version, index) => {
+        entries.push({
+          label: `${char.name} · Versão ${index + 1}`,
+          sublabel: version.label || 'Imagem anterior do personagem',
+          type: 'character',
+          modelUsed: version.modelUsed,
+          tokens: version.tokens,
+          costBRL: version.costBRL,
+          imageUrl: version.imageUrl,
+        });
       });
     }
 
@@ -91,96 +110,98 @@ const CostReportView: React.FC<CostReportViewProps> = ({ characters, scenes, tex
   const generatedScenes = scenes.filter(s => s.imageUrl).length;
   const generatedSplits = scenes.reduce((s, sc) => s + (sc.splitImages?.filter(i => i.imageUrl).length ?? 0), 0);
 
+  const apiSourceCard = (
+    <div className="card" style={{
+      padding:'14px 16px',
+      display:'flex',
+      alignItems:'center',
+      justifyContent:'space-between',
+      gap:12,
+      borderColor:'var(--border-md)',
+    }}>
+      <div style={{minWidth:0}}>
+        <p style={{fontSize:10,fontWeight:700,color:'var(--text-4)',textTransform:'uppercase',letterSpacing:'0.06em'}}>API em uso</p>
+        <p style={{fontSize:15,fontWeight:800,color:'var(--text-1)',marginTop:4}}>{apiSourceLabel}</p>
+        <p style={{fontSize:12,color:'var(--text-4)',marginTop:3,lineHeight:1.5}}>{apiSourceDescription}</p>
+      </div>
+      <span style={{
+        fontSize:11,
+        fontWeight:700,
+        color: apiSourceLabel.toLowerCase().includes('plataforma') ? '#34D399' : '#38BDF8',
+        background: apiSourceLabel.toLowerCase().includes('plataforma') ? 'rgba(52,211,153,0.12)' : 'rgba(56,189,248,0.12)',
+        border:'1px solid var(--border)',
+        borderRadius:6,
+        padding:'5px 8px',
+        whiteSpace:'nowrap',
+      }}>
+        {apiSourceLabel.toLowerCase().includes('plataforma') ? 'Créditos' : 'BYOK'}
+      </span>
+    </div>
+  );
+
   if (totalImages === 0 && textCosts.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center animate-fade-in">
-        <div className="w-20 h-20 glass rounded-2xl flex items-center justify-center mb-6">
-          <svg xmlns="http://www.w3.org/2000/svg" width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600">
-            <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
+      <div style={{display:'flex',flexDirection:'column',gap:12}} className="anim-fade">
+        {apiSourceCard}
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'64px 0',textAlign:'center'}}>
+          <div style={{width:48,height:48,borderRadius:10,background:'var(--surface-2)',border:'1px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
+            <svg xmlns="http://www.w3.org/2000/svg" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{color:'var(--text-4)'}}>
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <p style={{fontSize:14,fontWeight:600,color:'var(--text-2)',marginBottom:4}}>Nenhum custo registrado</p>
+          <p style={{fontSize:12,color:'var(--text-4)',maxWidth:320,lineHeight:1.6}}>
+            O relatório aparecerá aqui depois que você processar um CSV ou gerar imagens.
+          </p>
         </div>
-        <h3 className="text-xl font-bold text-slate-300 mb-2">Nenhum custo registrado ainda</h3>
-        <p className="text-slate-600 max-w-sm text-sm">
-          O relatório aparecerá aqui depois que você processar um CSV ou gerar imagens.
-        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div style={{display:'flex',flexDirection:'column',gap:12}} className="anim-fade">
+      {apiSourceCard}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
         {[
-          {
-            label: 'Custo Total',
-            value: `R$ ${fmt(grandTotal)}`,
-            sub: `≈ U$ ${(grandTotal / 5.80).toFixed(4)}`,
-            color: 'text-emerald-400',
-            border: 'border-emerald-500/15',
-            glow: 'bg-emerald-500/5',
-          },
-          {
-            label: 'Tokens de Saída',
-            value: totalTokens > 0 ? fmtK(totalTokens) : '—',
-            sub: totalTokens > 0 ? `${totalTokens.toLocaleString('pt-BR')} tokens` : 'Imagen não usa tokens',
-            color: 'text-violet-400',
-            border: 'border-violet-500/15',
-            glow: 'bg-violet-500/5',
-          },
-          {
-            label: 'Imagens Geradas',
-            value: String(totalImages),
-            sub: `${generatedChars} person. · ${generatedScenes} cenas · ${generatedSplits} planos`,
-            color: 'text-white',
-            border: 'border-white/8',
-            glow: 'bg-white/3',
-          },
-          {
-            label: 'Custo Médio/Img',
-            value: `R$ ${totalImages > 0 ? fmt(totalCost / totalImages) : '0,000'}`,
-            sub: 'por imagem gerada',
-            color: 'text-amber-400',
-            border: 'border-amber-500/15',
-            glow: 'bg-amber-500/5',
-          },
+          { label:'Custo Total', value:`R$ ${fmt(grandTotal)}`, sub:`≈ U$ ${(grandTotal/5.80).toFixed(4)}`, accent:'#34D399' },
+          { label:'Tokens de Saída', value: totalTokens > 0 ? fmtK(totalTokens) : '—', sub: totalTokens > 0 ? `${totalTokens.toLocaleString('pt-BR')} tokens` : 'Imagen não usa tokens', accent:'#818CF8' },
+          { label:'Imagens Geradas', value: String(totalImages), sub:`${generatedChars} pers · ${generatedScenes} cenas · ${generatedSplits} planos`, accent:'var(--text-1)' },
+          { label:'Custo Médio/Img', value:`R$ ${totalImages > 0 ? fmt(totalCost/totalImages) : '0,000'}`, sub:'por imagem gerada', accent:'#FCD34D' },
         ].map(card => (
-          <div key={card.label} className={`glass rounded-2xl p-5 border ${card.border} ${card.glow}`}>
-            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">{card.label}</p>
-            <p className={`text-2xl font-black ${card.color}`}>{card.value}</p>
-            <p className="text-xs text-slate-600 mt-1">{card.sub}</p>
+          <div key={card.label} className="card" style={{padding:'14px 16px'}}>
+            <p style={{fontSize:10,fontWeight:600,color:'var(--text-4)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{card.label}</p>
+            <p style={{fontSize:20,fontWeight:800,color:card.accent,fontFamily:'var(--mono)',letterSpacing:'-0.02em'}}>{card.value}</p>
+            <p style={{fontSize:11,color:'var(--text-4)',marginTop:4}}>{card.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Model breakdown */}
-      <div className="glass rounded-2xl p-6">
-        <h3 className="text-base font-bold text-white mb-5">Uso por Modelo</h3>
-        <div className="space-y-4">
+      <div className="card" style={{padding:'16px 18px'}}>
+        <p style={{fontSize:12,fontWeight:600,color:'var(--text-2)',marginBottom:14}}>Uso por Modelo</p>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {modelBreakdown.map(({ model, count, tokens, cost }) => {
             const pct = totalCost > 0 ? (cost / totalCost) * 100 : 0;
             const label = MODEL_LABELS[model] ?? model;
             const colors = MODEL_COLORS[model] ?? DEFAULT_COLORS;
             return (
               <div key={model}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${colors.dot}`} />
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-xl border ${colors.badge}`}>{label}</span>
-                    <span className="text-xs text-slate-600">{count} imagem{count !== 1 ? 's' : ''}</span>
-                    {tokens > 0 && <span className="text-xs text-slate-700">· {fmtK(tokens)} tk</span>}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{width:6,height:6,borderRadius:'50%',background:colors.dot.replace('bg-','').includes('-') ? undefined : colors.dot,flexShrink:0}} className={colors.dot} />
+                    <span style={{fontSize:11,fontWeight:600,color:'var(--text-2)'}}>{label}</span>
+                    <span style={{fontSize:11,color:'var(--text-4)'}}>{count} img{count !== 1 ? 's' : ''}</span>
+                    {tokens > 0 && <span style={{fontSize:11,color:'var(--text-4)'}}>· {fmtK(tokens)} tk</span>}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-600">{pct.toFixed(1)}%</span>
-                    <span className="text-sm font-bold text-emerald-400 w-24 text-right">R$ {fmt(cost)}</span>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:11,color:'var(--text-4)'}}>{pct.toFixed(1)}%</span>
+                    <span style={{fontSize:12,fontWeight:700,fontFamily:'var(--mono)',color:'#34D399',minWidth:70,textAlign:'right'}}>R$ {fmt(cost)}</span>
                   </div>
                 </div>
-                <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-1.5 rounded-full transition-all duration-700 ${colors.bar}`}
-                    style={{ width: `${pct}%` }}
-                  />
+                <div style={{width:'100%',height:3,background:'var(--surface-3)',borderRadius:99,overflow:'hidden'}}>
+                  <div className={colors.bar} style={{height:'100%',borderRadius:99,transition:'width .7s ease',width:`${pct}%`}} />
                 </div>
               </div>
             );
@@ -189,141 +210,133 @@ const CostReportView: React.FC<CostReportViewProps> = ({ characters, scenes, tex
       </div>
 
       {/* Detail table */}
-      <div className="glass rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-violet-500/10">
-          <h3 className="text-base font-bold text-white">Detalhamento por Imagem</h3>
-          <p className="text-xs text-slate-600 mt-0.5">{totalImages} imagens com custo registrado</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/5 text-left">
-                <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider w-14"></th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Imagem</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Tipo</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Modelo</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider text-right">Tokens</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider text-right">Custo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/4">
-              {entries.map((entry, i) => {
-                const colors = entry.modelUsed ? (MODEL_COLORS[entry.modelUsed] ?? DEFAULT_COLORS) : DEFAULT_COLORS;
-                const typeMap = {
-                  character: { label: 'Personagem', cls: 'bg-teal-500/15 text-teal-300' },
-                  scene:     { label: 'Cena',       cls: 'bg-violet-500/15 text-violet-300' },
-                  split:     { label: 'Plano',      cls: 'bg-white/8 text-slate-400' },
-                };
-                const typeInfo = typeMap[entry.type];
-                return (
-                  <tr key={i} className="hover:bg-white/3 transition-colors">
-                    <td className="px-4 py-2.5">
-                      {entry.imageUrl
-                        ? <img src={entry.imageUrl} alt={entry.label} className="w-12 h-8 object-cover rounded-lg border border-white/8" />
-                        : <div className="w-12 h-8 bg-white/5 rounded-lg border border-white/8" />
-                      }
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-slate-200 leading-tight">{entry.label}</p>
-                      <p className="text-xs text-slate-600 mt-0.5 truncate max-w-xs">{entry.sublabel}</p>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className={`text-xs font-medium px-2.5 py-1 rounded-xl ${typeInfo.cls}`}>{typeInfo.label}</span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {entry.modelUsed
-                        ? <span className={`text-xs font-semibold px-2.5 py-1 rounded-xl border ${colors.badge}`}>{MODEL_LABELS[entry.modelUsed] ?? entry.modelUsed}</span>
-                        : <span className="text-xs text-slate-700">—</span>
-                      }
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {entry.tokens !== undefined
-                        ? <span className="text-slate-400 font-mono text-xs">{entry.tokens.toLocaleString('pt-BR')}</span>
-                        : <span className="text-slate-700 text-xs">fixo</span>
-                      }
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {entry.costBRL !== undefined
-                        ? <span className="text-emerald-400 font-bold font-mono">R$ {fmt(entry.costBRL)}</span>
-                        : <span className="text-slate-700 text-xs">—</span>
-                      }
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-violet-500/15 bg-violet-500/5">
-                <td className="px-4 py-3.5" colSpan={4}>
-                  <span className="text-sm font-bold text-slate-200">Total</span>
-                  <span className="text-xs text-slate-600 ml-2">{totalImages} imagens</span>
-                </td>
-                <td className="px-4 py-3.5 text-right">
-                  <span className="text-slate-400 font-mono text-xs font-semibold">
-                    {totalTokens > 0 ? totalTokens.toLocaleString('pt-BR') : '—'}
-                  </span>
-                </td>
-                <td className="px-4 py-3.5 text-right">
-                  <span className="text-emerald-400 font-black font-mono">R$ {fmt(totalCost)}</span>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-      {/* Text / Analysis costs section */}
-      {textCosts.length > 0 && (
-        <div className="glass rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-violet-500/10">
-            <h3 className="text-base font-bold text-white">Custos de Análise de Texto</h3>
-            <p className="text-xs text-slate-600 mt-0.5">
-              {textCosts.length} chamada{textCosts.length !== 1 ? 's' : ''} · R$ {fmt(textCostTotal)} no total
-            </p>
+      {totalImages > 0 && (
+        <div className="card" style={{overflow:'hidden'}}>
+          <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'baseline',gap:8}}>
+            <p style={{fontSize:12,fontWeight:600,color:'var(--text-2)'}}>Detalhamento por Imagem</p>
+            <p style={{fontSize:11,color:'var(--text-4)'}}>{totalImages} imagens</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
               <thead>
-                <tr className="border-b border-white/5 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Operação</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Modelo</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider text-right">Tokens Entrada</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider text-right">Tokens Saída</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider text-right">Custo</th>
+                <tr style={{borderBottom:'1px solid var(--border)'}}>
+                  {['', 'Imagem', 'Tipo', 'Modelo', 'Tokens', 'Custo'].map((h, i) => (
+                    <th key={h+i} style={{padding:'8px 12px',textAlign: i >= 4 ? 'right' : 'left',fontSize:10,fontWeight:600,color:'var(--text-4)',textTransform:'uppercase',letterSpacing:'0.06em',whiteSpace:'nowrap'}}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/4">
+              <tbody>
+                {entries.map((entry, i) => {
+                  const colors = entry.modelUsed ? (MODEL_COLORS[entry.modelUsed] ?? DEFAULT_COLORS) : DEFAULT_COLORS;
+                  const typeColors = {
+                    character: {bg:'rgba(20,184,166,0.1)',color:'#5EEAD4'},
+                    scene:     {bg:'var(--indigo-s)',color:'#818CF8'},
+                    split:     {bg:'rgba(255,255,255,0.04)',color:'var(--text-3)'},
+                  };
+                  const tc = typeColors[entry.type];
+                  const typeLabels = { character:'Personagem', scene:'Cena', split:'Plano' };
+                  return (
+                    <tr key={i} style={{borderBottom:'1px solid var(--border)',transition:'background .1s ease'}} className="hover:bg-white/3">
+                      <td style={{padding:'6px 12px',width:48}}>
+                        {entry.imageUrl
+                          ? <img src={entry.imageUrl} alt={entry.label} style={{width:44,height:30,objectFit:'cover',borderRadius:5,border:'1px solid var(--border)',display:'block'}} />
+                          : <div style={{width:44,height:30,borderRadius:5,background:'var(--surface-2)',border:'1px solid var(--border)'}} />
+                        }
+                      </td>
+                      <td style={{padding:'6px 12px',maxWidth:200}}>
+                        <p style={{fontWeight:500,color:'var(--text-1)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{entry.label}</p>
+                        <p style={{fontSize:11,color:'var(--text-4)',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{entry.sublabel}</p>
+                      </td>
+                      <td style={{padding:'6px 12px'}}>
+                        <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:4,background:tc.bg,color:tc.color}}>{typeLabels[entry.type]}</span>
+                      </td>
+                      <td style={{padding:'6px 12px'}}>
+                        {entry.modelUsed
+                          ? <span className={`${colors.badge}`} style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:4,border:'1px solid'}}>{MODEL_LABELS[entry.modelUsed] ?? entry.modelUsed}</span>
+                          : <span style={{color:'var(--text-4)'}}>—</span>
+                        }
+                      </td>
+                      <td style={{padding:'6px 12px',textAlign:'right'}}>
+                        {entry.tokens !== undefined
+                          ? <span style={{fontFamily:'var(--mono)',color:'var(--text-3)'}}>{entry.tokens.toLocaleString('pt-BR')}</span>
+                          : <span style={{color:'var(--text-4)'}}>fixo</span>
+                        }
+                      </td>
+                      <td style={{padding:'6px 12px',textAlign:'right'}}>
+                        {entry.costBRL !== undefined
+                          ? <span style={{fontFamily:'var(--mono)',fontWeight:700,color:'#34D399'}}>R$ {fmt(entry.costBRL)}</span>
+                          : <span style={{color:'var(--text-4)'}}>—</span>
+                        }
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{borderTop:'2px solid var(--border)',background:'var(--surface-2)'}}>
+                  <td colSpan={4} style={{padding:'8px 12px'}}>
+                    <span style={{fontSize:12,fontWeight:600,color:'var(--text-1)'}}>Total</span>
+                    <span style={{fontSize:11,color:'var(--text-4)',marginLeft:8}}>{totalImages} imagens</span>
+                  </td>
+                  <td style={{padding:'8px 12px',textAlign:'right'}}>
+                    <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--text-3)',fontWeight:600}}>
+                      {totalTokens > 0 ? totalTokens.toLocaleString('pt-BR') : '—'}
+                    </span>
+                  </td>
+                  <td style={{padding:'8px 12px',textAlign:'right'}}>
+                    <span style={{fontFamily:'var(--mono)',fontWeight:800,color:'#34D399'}}>R$ {fmt(totalCost)}</span>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+      {/* Text / Analysis costs section */}
+      {textCosts.length > 0 && (
+        <div className="card" style={{overflow:'hidden'}}>
+          <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'baseline',gap:8}}>
+            <p style={{fontSize:12,fontWeight:600,color:'var(--text-2)'}}>Custos de Análise de Texto</p>
+            <p style={{fontSize:11,color:'var(--text-4)'}}>{textCosts.length} chamada{textCosts.length !== 1?'s':''} · R$ {fmt(textCostTotal)}</p>
+          </div>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{borderBottom:'1px solid var(--border)'}}>
+                  {['Operação','Modelo','Tokens Entrada','Tokens Saída','Custo'].map((h,i) => (
+                    <th key={h} style={{padding:'8px 12px',textAlign: i >= 2 ? 'right' : 'left',fontSize:10,fontWeight:600,color:'var(--text-4)',textTransform:'uppercase',letterSpacing:'0.06em'}}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
                 {textCosts.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-white/3 transition-colors">
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-slate-200">{entry.operation}</p>
-                      <p className="text-xs text-slate-600 mt-0.5">{new Date(entry.timestamp).toLocaleTimeString('pt-BR')}</p>
+                  <tr key={entry.id} style={{borderBottom:'1px solid var(--border)',transition:'background .1s'}} className="hover:bg-white/3">
+                    <td style={{padding:'7px 12px'}}>
+                      <p style={{fontWeight:500,color:'var(--text-1)'}}>{entry.operation}</p>
+                      <p style={{fontSize:10,color:'var(--text-4)',marginTop:1}}>{new Date(entry.timestamp).toLocaleTimeString('pt-BR')}</p>
                     </td>
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-xl border bg-violet-500/15 text-violet-300 border-violet-500/20">
+                    <td style={{padding:'7px 12px'}}>
+                      <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:4,background:'var(--indigo-s)',color:'#818CF8',border:'1px solid var(--indigo-b)'}}>
                         {TEXT_MODEL_LABELS[entry.model] ?? entry.model}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <span className="text-slate-400 font-mono text-xs">{entry.inputTokens.toLocaleString('pt-BR')}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <span className="text-slate-400 font-mono text-xs">{entry.outputTokens.toLocaleString('pt-BR')}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <span className="text-emerald-400 font-bold font-mono">R$ {fmt(entry.costBRL)}</span>
-                    </td>
+                    <td style={{padding:'7px 12px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text-3)'}}>{entry.inputTokens.toLocaleString('pt-BR')}</td>
+                    <td style={{padding:'7px 12px',textAlign:'right',fontFamily:'var(--mono)',color:'var(--text-3)'}}>{entry.outputTokens.toLocaleString('pt-BR')}</td>
+                    <td style={{padding:'7px 12px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:700,color:'#34D399'}}>R$ {fmt(entry.costBRL)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-violet-500/15 bg-violet-500/5">
-                  <td className="px-4 py-3.5" colSpan={4}>
-                    <span className="text-sm font-bold text-slate-200">Total Texto</span>
-                    <span className="text-xs text-slate-600 ml-2">{textCosts.length} chamadas</span>
+                <tr style={{borderTop:'2px solid var(--border)',background:'var(--surface-2)'}}>
+                  <td colSpan={4} style={{padding:'8px 12px'}}>
+                    <span style={{fontSize:12,fontWeight:600,color:'var(--text-1)'}}>Total Texto</span>
+                    <span style={{fontSize:11,color:'var(--text-4)',marginLeft:8}}>{textCosts.length} chamadas</span>
                   </td>
-                  <td className="px-4 py-3.5 text-right">
-                    <span className="text-emerald-400 font-black font-mono">R$ {fmt(textCostTotal)}</span>
-                  </td>
+                  <td style={{padding:'8px 12px',textAlign:'right',fontFamily:'var(--mono)',fontWeight:800,color:'#34D399'}}>R$ {fmt(textCostTotal)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -333,14 +346,17 @@ const CostReportView: React.FC<CostReportViewProps> = ({ characters, scenes, tex
 
       {/* Grand total strip */}
       {textCosts.length > 0 && totalImages > 0 && (
-        <div className="glass rounded-2xl px-6 py-4 border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-between">
+        <div style={{
+          display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 18px',
+          background:'rgba(52,211,153,0.06)',border:'1px solid rgba(52,211,153,0.2)',borderRadius:10,
+        }}>
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Custo Total Geral</p>
-            <p className="text-xs text-slate-600 mt-0.5">Imagens + Análises de texto</p>
+            <p style={{fontSize:10,fontWeight:600,color:'var(--text-4)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Custo Total Geral</p>
+            <p style={{fontSize:11,color:'var(--text-4)',marginTop:2}}>Imagens + análises de texto</p>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-black text-emerald-400">R$ {fmt(grandTotal)}</p>
-            <p className="text-xs text-slate-600 mt-0.5">≈ U$ {(grandTotal / 5.80).toFixed(4)}</p>
+          <div style={{textAlign:'right'}}>
+            <p style={{fontSize:22,fontWeight:800,fontFamily:'var(--mono)',color:'#34D399',letterSpacing:'-0.02em'}}>R$ {fmt(grandTotal)}</p>
+            <p style={{fontSize:11,color:'var(--text-4)',marginTop:2}}>≈ U$ {(grandTotal/5.80).toFixed(4)}</p>
           </div>
         </div>
       )}

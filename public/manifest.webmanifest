@@ -1,0 +1,20 @@
+{
+  "name": "Estúdio Visual",
+  "short_name": "Estúdio Visual",
+  "description": "Plataforma de storyboard inteligente com IA para roteiros, cenas, personagens e prompts visuais.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080A0F",
+  "theme_color": "#080A0F",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "graphics_and_design", "video"]
+}

@@ -14,83 +14,113 @@ const ImageEditModal: React.FC<ImageEditModalProps> = ({ isOpen, imageUrl, onClo
   const [prompt, setPrompt] = useState('');
 
   useEffect(() => {
-    if (isOpen) {
-      setPrompt(''); // Reset prompt when modal opens
-    }
+    if (isOpen) setPrompt('');
   }, [isOpen]);
-  
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (prompt.trim()) {
-      onConfirm(prompt);
-    }
+    if (prompt.trim()) onConfirm(prompt);
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 transition-opacity duration-300"
+    <div
       onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(0,0,0,0.85)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        animation: 'fadeIn .2s ease both',
+      }}
     >
-      <div 
-        className="relative bg-transparent w-full h-full flex flex-col lg:flex-row items-stretch"
+      <div
         onClick={(e) => e.stopPropagation()}
+        style={{
+          display: 'flex', flexDirection: 'row',
+          width: '90vw', maxWidth: 900,
+          height: '80vh', maxHeight: 640,
+          borderRadius: 12, overflow: 'hidden',
+          border: '1px solid var(--border)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
+        }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 bg-slate-800/70 rounded-full hover:bg-red-600 transition-colors z-20"
-          aria-label="Fechar edição"
-        >
-          <XIcon />
-        </button>
-
-        {/* Image Panel */}
-        <div className="flex-grow flex items-center justify-center p-4 lg:p-8 h-1/2 lg:h-full lg:w-2/3">
-           <img 
-              src={imageUrl} 
-              alt="Imagem para editar" 
-              className="w-auto h-auto max-w-full max-h-full object-contain rounded-lg shadow-2xl" 
-           />
+        {/* Image panel */}
+        <div style={{
+          flex: 1, background: 'var(--surface-2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24, overflow: 'hidden',
+        }}>
+          <img
+            src={imageUrl}
+            alt="Imagem para editar"
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
+          />
         </div>
 
-        {/* Controls Panel */}
-        <form onSubmit={handleSubmit} className="bg-slate-800 h-1/2 lg:h-full lg:w-1/3 flex flex-col p-6 lg:p-8 border-t-2 lg:border-t-0 lg:border-l-2 border-slate-700">
-           <h2 className="text-2xl font-bold text-white mb-4">Editar Imagem com IA</h2>
-           <p className="text-slate-400 text-sm mb-6">Descreva as alterações que você deseja fazer na imagem. Seja o mais detalhado possível para obter os melhores resultados.</p>
-           
-           <div className="flex-grow flex flex-col">
-              <label htmlFor="edit-prompt" className="text-sm font-medium text-slate-300 mb-2">
-                Prompt de Edição:
-              </label>
-              <textarea
-                id="edit-prompt"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Ex: mude o fundo para uma praia ensolarada, adicione um chapéu na pessoa..."
-                className="w-full h-full flex-grow bg-slate-900/70 border border-slate-600 rounded-md p-3 text-base text-slate-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 resize-none"
-                disabled={isEditing}
-              />
-           </div>
-
-           {error && (
-              <div className="my-4 p-3 bg-red-900/50 border border-red-700 rounded-md">
-                 <p className="text-sm text-red-300">{error}</p>
-              </div>
-            )}
-
-           <button
-              type="submit"
-              disabled={isEditing || !prompt.trim()}
-              className="mt-6 w-full flex items-center justify-center gap-3 px-4 py-3 text-lg font-semibold text-white bg-cyan-600 rounded-lg shadow-lg hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-wait transition-all"
+        {/* Controls panel */}
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            width: 320, flexShrink: 0,
+            background: 'var(--surface)',
+            borderLeft: '1px solid var(--border)',
+            display: 'flex', flexDirection: 'column',
+            padding: '24px 20px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)' }}>Editar com IA</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: 'var(--surface-2)', border: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--text-3)',
+              }}
             >
-              {isEditing ? (
-                  <div className="w-6 h-6 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
-              ) : (
-                  <SparklesIcon width={24} height={24} />
-              )}
-              <span>{isEditing ? 'Aplicando Edição...' : 'Aplicar Edição'}</span>
+              <XIcon width={13} height={13} />
             </button>
+          </div>
+
+          <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 14 }}>
+            Descreva as alterações que deseja fazer. Seja específico para obter os melhores resultados.
+          </p>
+
+          <label className="label" style={{ marginBottom: 6 }}>Prompt de Edição</label>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Ex: mude o fundo para uma praia, adicione um chapéu..."
+            className="field"
+            style={{ flex: 1, resize: 'none', fontSize: 13, minHeight: 120 }}
+            disabled={isEditing}
+          />
+
+          {error && (
+            <div style={{
+              marginTop: 12, padding: '8px 12px', borderRadius: 7,
+              background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)',
+            }}>
+              <p style={{ fontSize: 12, color: 'var(--red)' }}>{error}</p>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isEditing || !prompt.trim()}
+            className="btn btn-primary"
+            style={{ marginTop: 16, width: '100%', justifyContent: 'center', fontSize: 14, padding: '10px 16px' }}
+          >
+            {isEditing
+              ? <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
+              : <SparklesIcon width={15} height={15} />}
+            {isEditing ? 'Aplicando…' : 'Aplicar Edição'}
+          </button>
         </form>
       </div>
     </div>

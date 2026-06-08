@@ -1,120 +1,165 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { analyzeUploadedImage } from '../services/geminiService';
-import { UploadIcon, SparklesIcon } from './icons';
+import { UploadIcon, SparklesIcon, XIcon } from './icons';
 
 const QuickAnalyzer: React.FC = () => {
-    const [image, setImage] = useState<{ url: string; base64: string; mime: string; } | null>(null);
-    const [prompt, setPrompt] = useState<string>('O que está nesta imagem?');
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [result, setResult] = useState<string>('');
-    const [error, setError] = useState<string>('');
+  const [image, setImage]       = useState<{ url: string; base64: string; mime: string } | null>(null);
+  const [prompt, setPrompt]     = useState('O que está nesta imagem?');
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult]     = useState('');
+  const [error, setError]       = useState('');
 
-    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-            setError('Por favor, selecione um arquivo de imagem válido (PNG, JPG, WebP).');
-            return;
-        }
-        setError('');
-        setResult('');
-
-        const reader = new FileReader();
-        reader.onload = (loadEvent) => {
-            const resultUrl = loadEvent.target?.result as string;
-            if (resultUrl) {
-                const base64Data = resultUrl.split(',')[1];
-                setImage({
-                    url: resultUrl,
-                    base64: base64Data,
-                    mime: file.type,
-                });
-            }
-        };
-        reader.readAsDataURL(file);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Selecione uma imagem válida (PNG, JPG, WebP).');
+      return;
+    }
+    setError(''); setResult('');
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const url = ev.target?.result as string;
+      if (url) setImage({ url, base64: url.split(',')[1], mime: file.type });
     };
+    reader.readAsDataURL(file);
+  };
 
-    const handleAnalyze = async () => {
-        if (!image || !prompt) {
-            setError('Por favor, carregue uma imagem e insira um prompt.');
-            return;
-        }
-        setIsLoading(true);
-        setResult('');
-        setError('');
-        try {
-            const analysisResult = await analyzeUploadedImage(image.base64, image.mime, prompt);
-            setResult(analysisResult);
-        } catch (e: any) {
-            setError(e.message || 'Ocorreu um erro desconhecido durante a análise.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  const handleAnalyze = async () => {
+    if (!image || !prompt) return;
+    setIsLoading(true); setResult(''); setError('');
+    try {
+      setResult(await analyzeUploadedImage(image.base64, image.mime, prompt));
+    } catch (e: any) {
+      setError(e.message || 'Erro desconhecido durante a análise.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    return (
-        <div className="mt-16">
-            <div className="text-center mb-6">
-                 <h2 className="text-xl font-semibold text-slate-300">Ferramenta de Análise Rápida</h2>
-                 <p className="text-sm text-slate-500">Faça upload de uma imagem e pergunte à IA sobre ela.</p>
-            </div>
-            <div className="max-w-4xl mx-auto p-6 bg-slate-800 border border-slate-700 rounded-xl grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="flex flex-col items-center justify-center">
-                    {image ? (
-                        <div className="relative group w-full max-w-sm">
-                            <img src={image.url} alt="Uploaded preview" className="rounded-lg shadow-lg w-full h-auto object-contain" />
-                            <button onClick={() => {setImage(null); setResult('');}} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 transition-colors opacity-0 group-hover:opacity-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="w-full">
-                            <label htmlFor="quick-upload" className="cursor-pointer p-10 border border-dashed border-slate-700 rounded-lg flex flex-col items-center justify-center h-full hover:border-cyan-400 transition-colors bg-slate-800/20">
-                                <UploadIcon width={48} height={48} className="text-slate-500 mb-4" />
-                                <span className="font-semibold text-cyan-400 hover:underline">Clique para carregar</span>
-                                <p className="text-xs text-slate-500 mt-1">PNG, JPG, WebP</p>
-                            </label>
-                            <input id="quick-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={handleFileSelect} />
-                        </div>
-                    )}
-                </div>
-                <div className="flex flex-col space-y-4">
-                    <div>
-                        <label htmlFor="analyzer-prompt" className="text-sm font-medium text-slate-300 mb-1 block">Seu Prompt:</label>
-                        <textarea
-                            id="analyzer-prompt"
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            className="w-full bg-slate-900/70 border border-slate-600 rounded-md p-2 text-sm text-slate-300 focus:ring-cyan-500 focus:border-cyan-500"
-                            rows={3}
-                            placeholder="Ex: Que animal é este? Existe algum texto nesta imagem?"
-                        />
-                    </div>
-                    <button
-                        onClick={handleAnalyze}
-                        disabled={!image || isLoading}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-md font-semibold text-white bg-cyan-600 rounded-lg shadow-md hover:bg-cyan-700 disabled:bg-slate-600 transition-colors"
-                    >
-                        {isLoading ? (
-                            <div className="w-5 h-5 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
-                        ) : (
-                            <SparklesIcon width={20} height={20} />
-                        )}
-                        <span>{isLoading ? 'Analisando...' : 'Analisar Imagem'}</span>
-                    </button>
-                    {(result || isLoading || error) && (
-                        <div className="bg-slate-900/50 p-4 rounded-lg flex-grow min-h-[100px]">
-                            <h4 className="text-sm font-semibold text-slate-300 mb-2">Resultado da Análise:</h4>
-                            {isLoading && <p className="text-sm text-slate-400 animate-pulse">A IA está pensando...</p>}
-                            {error && <p className="text-sm text-red-400">{error}</p>}
-                            {result && <p className="text-sm text-slate-300 whitespace-pre-wrap">{result}</p>}
-                        </div>
-                    )}
-                </div>
-            </div>
+  return (
+    <section className="quick-tool-section">
+      <div className="section-hd" style={{ marginBottom: 12 }}>
+        <div>
+          <p className="section-title">Ferramenta rápida</p>
+          <p className="section-sub">Analise referências visuais sem criar um projeto completo.</p>
         </div>
-    );
+        <span className="badge badge-zinc">Imagem</span>
+      </div>
+
+      <div className="quick-tool-card">
+        {/* Left — image area */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {image ? (
+            <div className="group" style={{ position: 'relative', width: '100%' }}>
+              <img
+                src={image.url}
+                alt="Preview"
+                style={{ width: '100%', borderRadius: 8, objectFit: 'contain', maxHeight: 240, display: 'block' }}
+              />
+              <button
+                onClick={() => { setImage(null); setResult(''); }}
+                style={{
+                  position: 'absolute', top: 6, right: 6,
+                  width: 26, height: 26, borderRadius: '50%',
+                  background: 'var(--surface)', border: '1px solid var(--border-md)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--text-2)',
+                  opacity: 0, transition: 'opacity .15s ease',
+                }}
+                className="group-hover:opacity-100"
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(248,113,113,0.2)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'var(--surface)')}
+              >
+                <XIcon width={12} height={12} />
+              </button>
+            </div>
+          ) : (
+            <div style={{ width: '100%' }}>
+              <label
+                htmlFor="quick-upload"
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', gap: 8, padding: '36px 20px',
+                  border: '1px dashed var(--border-md)', borderRadius: 10,
+                  background: 'var(--surface-2)', cursor: 'pointer',
+                  transition: 'border-color .12s ease, background .12s ease',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--indigo)';
+                  (e.currentTarget as HTMLElement).style.background  = 'var(--indigo-s)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-md)';
+                  (e.currentTarget as HTMLElement).style.background  = 'var(--surface-2)';
+                }}
+              >
+                <UploadIcon width={32} height={32} style={{ color: 'var(--text-4)' }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--indigo)' }}>Clique para carregar</span>
+                <span style={{ fontSize: 11, color: 'var(--text-4)' }}>PNG, JPG, WebP</span>
+              </label>
+              <input
+                id="quick-upload"
+                type="file"
+                className="hidden"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleFileSelect}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Right — controls */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label className="label" style={{ marginBottom: 6 }}>Prompt</label>
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              className="field"
+              rows={3}
+              style={{ resize: 'none', fontSize: 12 }}
+              placeholder="Ex: Que animal é este? Existe algum texto nesta imagem?"
+            />
+          </div>
+
+          <button
+            onClick={handleAnalyze}
+            disabled={!image || isLoading}
+            className="btn btn-primary"
+            style={{ width: '100%', justifyContent: 'center', fontSize: 13 }}
+          >
+            {isLoading
+              ? <div style={{ width: 13, height: 13, border: '2px solid rgba(255,255,255,.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
+              : <SparklesIcon width={14} height={14} />}
+            {isLoading ? 'Analisando…' : 'Analisar Imagem'}
+          </button>
+
+          {(result || isLoading || error) && (
+            <div style={{
+              padding: '12px 14px', borderRadius: 8, flex: 1,
+              background: 'var(--surface-2)', border: '1px solid var(--border)',
+            }}>
+              <p className="label" style={{ marginBottom: 8 }}>Resultado</p>
+              {isLoading && (
+                <p style={{ fontSize: 12, color: 'var(--text-4)', fontStyle: 'italic' }}>
+                  A IA está pensando…
+                </p>
+              )}
+              {error && (
+                <p style={{ fontSize: 12, color: 'var(--red)' }}>{error}</p>
+              )}
+              {result && (
+                <p style={{ fontSize: 12, color: 'var(--text-2)', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                  {result}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 };
 
 export default QuickAnalyzer;
