@@ -14,13 +14,16 @@
   },
   "dependencies": {
     "@google/genai": "^1.28.0",
+    "@sentry/node": "^10.56.0",
+    "@sentry/react": "^10.56.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^4.19.2",
     "helmet": "^8.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "stripe": "^22.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

@@ -133,6 +133,17 @@ db.exec(`
     created_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS stripe_events (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    processed_at TEXT,
+    error TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_stripe_events_processed_at ON stripe_events(processed_at);
 `);
 
 // ── Migrations idempotentes (para bancos pré-existentes) ─────────────────────
@@ -143,6 +154,14 @@ const addColumnIfMissing = (table, column, definition) => {
   }
 };
 addColumnIfMissing('users', 'email_verified_at', 'TEXT');
+addColumnIfMissing('users', 'stripe_customer_id', 'TEXT');
+addColumnIfMissing('plans', 'stripe_price_id', 'TEXT');
+addColumnIfMissing('subscriptions', 'stripe_subscription_id', 'TEXT');
+addColumnIfMissing('subscriptions', 'stripe_price_id', 'TEXT');
+addColumnIfMissing('subscriptions', 'cancel_at_period_end', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('payments', 'stripe_payment_intent_id', 'TEXT');
+addColumnIfMissing('payments', 'stripe_invoice_id', 'TEXT');
+addColumnIfMissing('payments', 'receipt_url', 'TEXT');
 
 const seedPlans = db.prepare(`
   INSERT OR IGNORE INTO plans (id, name, monthly_credits, max_projects, max_scenes_per_script, allow_user_api_key, price_brl)

@@ -17,6 +17,8 @@ import registerAdminRoutes from './routes/adminRoutes.mjs';
 import registerGeminiRoutes from './routes/geminiRoutes.mjs';
 import registerSam2Routes from './routes/sam2Routes.mjs';
 import registerHealthRoutes from './routes/healthRoutes.mjs';
+import registerStripeWebhookRoutes from './routes/stripeWebhookRoutes.mjs';
+import { initSentry, sentryRequestHandler, sentryErrorHandler } from './sentry.mjs';
 
 const app = express();
 const port = Number(process.env.API_PORT || 8787);
@@ -82,6 +84,13 @@ app.use(cors({
 
 app.use(cookieParser());
 
+// ── Sentry (no-op se SENTRY_DSN não estiver definido) ────────────────────────
+initSentry();
+app.use(sentryRequestHandler());
+
+// ── Webhook do Stripe — precisa do body cru, ANTES do express.json global ────
+registerStripeWebhookRoutes(app);
+
 // ── Request logger com x-request-id e sanitização de campos sensíveis ─────────
 app.use(requestLogger);
 
@@ -118,6 +127,9 @@ registerProjectRoutes(app, deps);
 registerAdminRoutes(app, deps);
 registerGeminiRoutes(app, deps);
 registerSam2Routes(app, deps);
+
+// ── Sentry captura erros antes do handler global ────────────────────────────
+app.use(sentryErrorHandler());
 
 // ── Global error handler (ensures API errors are always JSON) ─────────────────
 app.use((err, req, res, _next) => {

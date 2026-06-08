@@ -8,6 +8,7 @@ import {
   publicUser,
   encryptText,
 } from '../auth.mjs';
+import { isStripeEnabled, createSubscriptionCheckout, createBillingPortal } from '../stripe.mjs';
 
 export default function registerAccountRoutes(app, { asyncRoute }) {
   app.patch('/api/account/billing-mode', requireAuth, asyncRoute(async (req) => {
@@ -139,15 +140,33 @@ export default function registerAccountRoutes(app, { asyncRoute }) {
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(planId);
     if (!plan) throw new Error('Plano não encontrado.');
 
-    const createdAt = nowIso();
-    db.prepare(`
-      INSERT INTO payments (id, user_id, provider, provider_payment_id, amount_brl, status, metadata_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id('pay'), req.user.id, 'stripe_placeholder', null, plan.price_brl, 'pending', JSON.stringify({ planId: plan.id }), createdAt);
+    if (!isStripeEnabled()) {
+      // Modo dev sem Stripe — devolve URL nula e orienta o uso do mock-upgrade.
+      return {
+        checkoutUrl: null,
+        message: 'Stripe não está configurado neste ambiente. Use /api/billing/mock-upgrade no dev.',
+      };
+    }
 
-    return {
-      checkoutUrl: null,
-      message: 'Checkout Stripe ainda não está configurado. Use o upgrade de teste no ambiente local.',
-    };
+    const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    const session = await createSubscriptionCheckout({
+      user: req.user,
+      plan,
+      successUrl: `${baseUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${baseUrl}/billing/canceled`,
+    });
+    return { checkoutUrl: session.url, sessionId: session.id };
+  }));
+
+  app.post('/api/billing/portal', requireVerifiedEmail, asyncRoute(async (req) => {
+    if (!isStripeEnabled()) {
+      throw new Error('Stripe não configurado.');
+    }
+    const baseUrl = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    const session = await createBillingPortal({
+      user: req.user,
+      returnUrl: `${baseUrl}/`,
+    });
+    return { portalUrl: session.url };
   }));
 }
