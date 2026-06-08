@@ -1,5 +1,6 @@
 import { db, nowIso, id } from '../db.mjs';
 import { requireAuth, requireAdmin, publicUser, getUserById } from '../auth.mjs';
+import { validate, schemas } from '../validation.mjs';
 
 export default function registerAdminRoutes(app, { asyncRoute }) {
   app.get('/api/usage/summary', requireAuth, (req, res) => {
@@ -149,11 +150,13 @@ export default function registerAdminRoutes(app, { asyncRoute }) {
 
   // ── Conceder ou debitar créditos manualmente ────────────────────────────
   app.post('/api/admin/users/:id/credits', requireAdmin, (req, res) => {
-    const amount = Math.trunc(Number(req.body?.amount));
-    const description = String(req.body?.description || 'Ajuste manual do admin').slice(0, 200);
-    if (!amount || Number.isNaN(amount)) {
-      return res.status(400).json({ error: 'Quantidade inválida (use número inteiro positivo ou negativo).' });
+    let amount, description;
+    try {
+      ({ amount, description } = validate(schemas.adminCredits, req.body));
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
     }
+    description = description || 'Ajuste manual do admin';
     const target = getUserById(req.params.id);
     if (!target) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
@@ -177,7 +180,12 @@ export default function registerAdminRoutes(app, { asyncRoute }) {
 
   // ── Mudar plano manualmente ─────────────────────────────────────────────
   app.post('/api/admin/users/:id/plan', requireAdmin, (req, res) => {
-    const planId = String(req.body?.planId || '').trim();
+    let planId;
+    try {
+      ({ planId } = validate(schemas.adminPlan, req.body));
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(planId);
     if (!plan) return res.status(404).json({ error: 'Plano não encontrado.' });
     const target = getUserById(req.params.id);

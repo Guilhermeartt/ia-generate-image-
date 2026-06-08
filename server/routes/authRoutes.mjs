@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { db, nowIso, id } from '../db.mjs';
+import { db, nowIso, id, transaction } from '../db.mjs';
 import {
   rateLimit,
   passwordHash,
@@ -12,6 +12,7 @@ import {
   getUserById,
   publicUser,
 } from '../auth.mjs';
+import { validate, schemas } from '../validation.mjs';
 
 const VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24; // 24h
 
@@ -35,33 +36,31 @@ export default function registerAuthRoutes(app, { asyncRoute }) {
       throw Object.assign(new Error('Muitas tentativas de registro. Aguarde alguns minutos.'), { status: 429 });
     }
 
-    const name = String(req.body.name || '').trim();
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const password = String(req.body.password || '');
-
-    if (!name || !email || password.length < 8) {
-      throw new Error('Informe nome, e-mail e uma senha com pelo menos 8 caracteres.');
-    }
+    const { name, email, password } = validate(schemas.register, req.body);
 
     const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
     if (existing) throw new Error('Já existe uma conta com este e-mail.');
 
     const userId = id('user');
     const createdAt = nowIso();
-    db.prepare(`
-      INSERT INTO users (id, name, email, password_hash, ai_billing_mode, plan_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, name, email, passwordHash(password), 'platform', 'free', createdAt, createdAt);
+    // Criação de conta + assinatura + créditos iniciais numa única transação:
+    // se algum passo falhar, não fica uma conta órfã sem créditos/assinatura.
+    transaction(() => {
+      db.prepare(`
+        INSERT INTO users (id, name, email, password_hash, ai_billing_mode, plan_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(userId, name, email, passwordHash(password), 'platform', 'free', createdAt, createdAt);
 
-    db.prepare(`
-      INSERT INTO subscriptions (id, user_id, plan_id, status, current_period_end, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id('sub'), userId, 'free', 'active', null, createdAt, createdAt);
+      db.prepare(`
+        INSERT INTO subscriptions (id, user_id, plan_id, status, current_period_end, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(id('sub'), userId, 'free', 'active', null, createdAt, createdAt);
 
-    db.prepare(`
-      INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id('credit'), userId, 'grant', 200, 200, 'Créditos iniciais do plano Free', createdAt);
+      db.prepare(`
+        INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(id('credit'), userId, 'grant', 200, 200, 'Créditos iniciais do plano Free', createdAt);
+    });
 
     const verification = createVerificationToken(userId);
     // TODO Fase 2: enviar e-mail via Resend. Em dev, devolvemos o token na resposta.
@@ -82,8 +81,7 @@ export default function registerAuthRoutes(app, { asyncRoute }) {
     if (rateLimit(`verify-email:${ip}`, 20, 60 * 60 * 1000)) {
       throw Object.assign(new Error('Muitas tentativas. Aguarde alguns minutos.'), { status: 429 });
     }
-    const rawToken = String(req.body.token || '').trim();
-    if (!rawToken) throw new Error('Token de verificação ausente.');
+    const { token: rawToken } = validate(schemas.verifyEmail, req.body);
 
     const tokenHash = hashResetToken(rawToken);
     const row = db.prepare(`
@@ -130,8 +128,7 @@ export default function registerAuthRoutes(app, { asyncRoute }) {
       throw Object.assign(new Error('Muitas tentativas de login. Aguarde 15 minutos.'), { status: 429 });
     }
 
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const password = String(req.body.password || '');
+    const { email, password } = validate(schemas.login, req.body);
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 
     if (!user || !verifyPassword(password, user.password_hash)) {
@@ -149,8 +146,7 @@ export default function registerAuthRoutes(app, { asyncRoute }) {
       throw Object.assign(new Error('Muitas solicitações de recuperação. Aguarde uma hora.'), { status: 429 });
     }
 
-    const email = String(req.body.email || '').trim().toLowerCase();
-    if (!email) throw new Error('Informe o e-mail da conta.');
+    const { email } = validate(schemas.forgotPassword, req.body);
 
     // Always return the same message to avoid user enumeration.
     const response = {
@@ -187,11 +183,7 @@ export default function registerAuthRoutes(app, { asyncRoute }) {
   }));
 
   app.post('/api/auth/password/reset', asyncRoute(async (req, res) => {
-    const resetToken = String(req.body.resetToken || '').trim();
-    const password = String(req.body.password || '');
-    if (!resetToken || password.length < 8) {
-      throw new Error('Informe o token de recuperação e uma nova senha com pelo menos 8 caracteres.');
-    }
+    const { resetToken, password } = validate(schemas.resetPassword, req.body);
 
     const tokenHash = hashResetToken(resetToken);
     const row = db.prepare(`

@@ -1,4 +1,4 @@
-import { db, nowIso, id } from './db.mjs';
+import { db, nowIso, id, transaction } from './db.mjs';
 import { getUserPlan, getCreditBalance, decryptText } from './auth.mjs';
 
 // ── Pricing constants ─────────────────────────────────────────────────────────
@@ -102,17 +102,18 @@ export const getBillingContext = (req) => {
     if (!req.user) {
       throw new Error('Faça login para usar a API da plataforma, ou configure sua própria API Key Gemini.');
     }
-    // Pre-check balance before the Gemini call to minimise over-spend under concurrency.
-    const balance = getCreditBalance(req.user.id);
-    if (balance <= 0) {
-      throw new Error('Seus créditos acabaram. Use sua própria API Key ou faça upgrade do plano.');
-    }
-    // Reserve 1 credit optimistically so concurrent requests don't all pass the check.
-    const reservedAt = nowIso();
-    db.prepare(`
-      INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id('credit'), req.user.id, 'reserve', -1, balance - 1, 'Reserva pré-geração', reservedAt);
+    // Checagem de saldo + reserva numa única transação: evita que requisições
+    // concorrentes leiam o mesmo saldo e reservem além do disponível.
+    transaction(() => {
+      const balance = getCreditBalance(req.user.id);
+      if (balance <= 0) {
+        throw new Error('Seus créditos acabaram. Use sua própria API Key ou faça upgrade do plano.');
+      }
+      db.prepare(`
+        INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(id('credit'), req.user.id, 'reserve', -1, balance - 1, 'Reserva pré-geração', nowIso());
+    });
     if (platform.kind === 'vertex') {
       req.billingContext = {
         vertex: { project: platform.project, location: platform.location },
@@ -135,6 +136,9 @@ export const getBillingContext = (req) => {
 };
 
 // ── Usage recording ───────────────────────────────────────────────────────────
+// Toda a gravação (log de uso + débito/estorno de crédito) acontece numa única
+// transação atômica: se qualquer passo falhar, nada é persistido — evita o estado
+// inconsistente de "cobrou crédito mas não logou" (ou vice-versa).
 export const recordUsage = (req, costEntry) => {
   if (!costEntry) return;
   const ctx = req.billingContext; // already resolved — don't call getBillingContext again (would re-reserve)
@@ -142,6 +146,8 @@ export const recordUsage = (req, costEntry) => {
   const billingMode = ctx.billingMode;
   const creditCost = creditCostFor(costEntry, billingMode);
   const createdAt = nowIso();
+
+  transaction(() => {
   db.prepare(`
     INSERT INTO usage_logs (
       id, user_id, project_id, operation, provider, model, billing_mode,
@@ -200,4 +206,5 @@ export const recordUsage = (req, costEntry) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id('credit'), req.user.id, 'refund', ctx.reservedCredit, current + ctx.reservedCredit, 'Estorno reserva (custo zero)', createdAt);
   }
+  });
 };

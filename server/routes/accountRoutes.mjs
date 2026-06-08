@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { db, nowIso, id } from '../db.mjs';
+import { db, nowIso, id, transaction } from '../db.mjs';
 import {
   requireAuth,
   requireVerifiedEmail,
@@ -9,6 +9,7 @@ import {
   encryptText,
 } from '../auth.mjs';
 import { isStripeEnabled, createSubscriptionCheckout, createBillingPortal } from '../stripe.mjs';
+import { validate, schemas } from '../validation.mjs';
 
 export default function registerAccountRoutes(app, { asyncRoute }) {
   app.patch('/api/account/billing-mode', requireAuth, asyncRoute(async (req) => {
@@ -110,33 +111,36 @@ export default function registerAccountRoutes(app, { asyncRoute }) {
 
   // ── Billing ───────────────────────────────────────────────────────────────
   app.post('/api/billing/mock-upgrade', requireVerifiedEmail, asyncRoute(async (req) => {
-    const planId = String(req.body.planId || '');
+    const { planId } = validate(schemas.billingPlan, req.body);
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(planId);
     if (!plan) throw new Error('Plano não encontrado.');
 
     const createdAt = nowIso();
-    db.prepare('UPDATE users SET plan_id = ?, updated_at = ? WHERE id = ?').run(plan.id, createdAt, req.user.id);
-    db.prepare(`
-      INSERT INTO subscriptions (id, user_id, plan_id, status, current_period_end, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id('sub'), req.user.id, plan.id, 'active', null, createdAt, createdAt);
-    db.prepare(`
-      INSERT INTO payments (id, user_id, provider, provider_payment_id, amount_brl, status, metadata_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id('pay'), req.user.id, 'mock', null, plan.price_brl, 'paid', JSON.stringify({ planId: plan.id }), createdAt);
+    // Mudança de plano + assinatura + pagamento + créditos: tudo ou nada.
+    transaction(() => {
+      db.prepare('UPDATE users SET plan_id = ?, updated_at = ? WHERE id = ?').run(plan.id, createdAt, req.user.id);
+      db.prepare(`
+        INSERT INTO subscriptions (id, user_id, plan_id, status, current_period_end, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(id('sub'), req.user.id, plan.id, 'active', null, createdAt, createdAt);
+      db.prepare(`
+        INSERT INTO payments (id, user_id, provider, provider_payment_id, amount_brl, status, metadata_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id('pay'), req.user.id, 'mock', null, plan.price_brl, 'paid', JSON.stringify({ planId: plan.id }), createdAt);
 
-    const current = Number(db.prepare('SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_transactions WHERE user_id = ?').get(req.user.id)?.balance || 0);
-    const nextBalance = current + Number(plan.monthly_credits);
-    db.prepare(`
-      INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id('credit'), req.user.id, 'grant', plan.monthly_credits, nextBalance, `Créditos do plano ${plan.name}`, createdAt);
+      const current = Number(db.prepare('SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_transactions WHERE user_id = ?').get(req.user.id)?.balance || 0);
+      const nextBalance = current + Number(plan.monthly_credits);
+      db.prepare(`
+        INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(id('credit'), req.user.id, 'grant', plan.monthly_credits, nextBalance, `Créditos do plano ${plan.name}`, createdAt);
+    });
 
     return { user: publicUser(getUserById(req.user.id)) };
   }));
 
   app.post('/api/billing/checkout', requireVerifiedEmail, asyncRoute(async (req) => {
-    const planId = String(req.body.planId || '');
+    const { planId } = validate(schemas.billingPlan, req.body);
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(planId);
     if (!plan) throw new Error('Plano não encontrado.');
 

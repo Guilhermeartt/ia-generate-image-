@@ -10,6 +10,37 @@ export const projectRoot = path.resolve(__dirname, '..');
 export const nowIso = () => new Date().toISOString();
 export const id = (prefix) => `${prefix}_${crypto.randomUUID()}`;
 
+/**
+ * Executa `fn` dentro de uma transação SQLite. Faz COMMIT no sucesso e
+ * ROLLBACK em qualquer exceção, garantindo atomicidade de operações que
+ * envolvem múltiplos INSERT/UPDATE (ex.: débito de crédito + log de uso).
+ *
+ * Não pode ser aninhada (SQLite não suporta transações aninhadas nativas);
+ * se já houver uma transação ativa, executa direto para não quebrar.
+ *
+ * @template T
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export const transaction = (fn) => {
+  // db.isTransaction existe em node:sqlite recente; fallback defensivo.
+  const alreadyInTx = typeof db.isTransaction === 'boolean' ? db.isTransaction : false;
+  if (alreadyInTx) return fn();
+  db.exec('BEGIN');
+  try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // se o rollback falhar, propaga o erro original mesmo assim
+    }
+    throw err;
+  }
+};
+
 // Caminho do banco é configurável via DATABASE_FILE — permite que testes usem
 // um arquivo temporário (ou ':memory:') sem tocar no banco de produção/dev.
 const dbFile = process.env.DATABASE_FILE || path.join(projectRoot, 'data', 'saas.sqlite');

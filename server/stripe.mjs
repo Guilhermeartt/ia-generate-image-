@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { db, nowIso, id } from './db.mjs';
+import { db, nowIso, id, transaction } from './db.mjs';
 
 // ── Cliente Stripe ───────────────────────────────────────────────────────────
 // Inicializa apenas se STRIPE_SECRET_KEY estiver presente. Quando ausente,
@@ -89,23 +89,27 @@ export const markStripeEventProcessed = (eventId, error = null) => {
 // Cobre a transição: invoice.paid → o usuário recebe os créditos mensais do plano.
 // Idempotência adicional por invoice: se já creditamos por essa invoice, não duplica.
 export const grantPlanCreditsOnInvoice = (userId, plan, invoiceId, amountBrl) => {
-  const alreadyGranted = db.prepare(`
-    SELECT 1 FROM payments WHERE user_id = ? AND stripe_invoice_id = ?
-  `).get(userId, invoiceId);
-  if (alreadyGranted) return;
+  // Crédito + registro de pagamento numa única transação: a idempotência por
+  // invoice e a concessão de créditos não podem ficar desincronizadas.
+  transaction(() => {
+    const alreadyGranted = db.prepare(`
+      SELECT 1 FROM payments WHERE user_id = ? AND stripe_invoice_id = ?
+    `).get(userId, invoiceId);
+    if (alreadyGranted) return;
 
-  const createdAt = nowIso();
-  const balanceRow = db.prepare('SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_transactions WHERE user_id = ?').get(userId);
-  const currentBalance = Number(balanceRow?.balance || 0);
-  const nextBalance = currentBalance + Number(plan.monthly_credits);
+    const createdAt = nowIso();
+    const balanceRow = db.prepare('SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_transactions WHERE user_id = ?').get(userId);
+    const currentBalance = Number(balanceRow?.balance || 0);
+    const nextBalance = currentBalance + Number(plan.monthly_credits);
 
-  db.prepare(`
-    INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id('credit'), userId, 'grant', plan.monthly_credits, nextBalance, `Créditos mensais do plano ${plan.name}`, createdAt);
+    db.prepare(`
+      INSERT INTO credit_transactions (id, user_id, type, amount, balance_after, description, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id('credit'), userId, 'grant', plan.monthly_credits, nextBalance, `Créditos mensais do plano ${plan.name}`, createdAt);
 
-  db.prepare(`
-    INSERT INTO payments (id, user_id, provider, provider_payment_id, amount_brl, status, metadata_json, created_at, stripe_invoice_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id('pay'), userId, 'stripe', null, Math.round(amountBrl), 'paid', JSON.stringify({ planId: plan.id, invoiceId }), createdAt, invoiceId);
+    db.prepare(`
+      INSERT INTO payments (id, user_id, provider, provider_payment_id, amount_brl, status, metadata_json, created_at, stripe_invoice_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id('pay'), userId, 'stripe', null, Math.round(amountBrl), 'paid', JSON.stringify({ planId: plan.id, invoiceId }), createdAt, invoiceId);
+  });
 };
