@@ -44,18 +44,27 @@ export const requestLogger = (req, res, next) => {
     if (req.path.startsWith('/assets/') || req.path.startsWith('/static/')) return;
 
     const durationMs = Number((process.hrtime.bigint() - start) / 1_000_000n);
+    // Formato compatível com Google Cloud Logging structured logs:
+    //   - `severity` ao invés de `level`
+    //   - `httpRequest` com schema oficial (https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#httprequest)
+    //   - `logging.googleapis.com/trace` quando houver trace propagation
+    const severity = res.statusCode >= 500 ? 'ERROR' : res.statusCode >= 400 ? 'WARNING' : 'INFO';
     const record = {
-      ts: new Date().toISOString(),
-      level: res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+      timestamp: new Date().toISOString(),
+      severity,
+      message: `${req.method} ${req.path} ${res.statusCode} ${durationMs}ms`,
       requestId,
-      method: req.method,
-      path: req.path,
-      status: res.statusCode,
-      durationMs,
       userId: req.user?.id || null,
-      ip: req.ip,
+      httpRequest: {
+        requestMethod: req.method,
+        requestUrl: req.originalUrl || req.url,
+        status: res.statusCode,
+        latency: `${(durationMs / 1000).toFixed(3)}s`,
+        remoteIp: req.ip,
+        userAgent: req.get('user-agent') || undefined,
+        protocol: `HTTP/${req.httpVersion}`,
+      },
     };
-    // não logamos body/headers por padrão (PII + apiKey); ative com LOG_BODIES=1 em dev.
     if (process.env.LOG_BODIES === '1' && req.body) {
       record.body = sanitizeObject(req.body);
     }

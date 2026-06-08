@@ -1,0 +1,63 @@
+name: Deploy to GCE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: projeto/package-lock.json
+      - name: Install
+        working-directory: projeto
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        working-directory: projeto
+        run: npx tsc --noEmit
+
+  deploy:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.GCE_SSH_HOST }}
+          username: ${{ secrets.GCE_SSH_USER }}
+          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 10m
+          script: |
+            sudo /opt/vycena/deploy/deploy.sh
+
+      - name: Verifica health pública
+        if: ${{ secrets.PUBLIC_HEALTH_URL != '' }}
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS "${{ secrets.PUBLIC_HEALTH_URL }}" >/dev/null; then
+              echo "Health check passou"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Health check falhou"; exit 1
+
+      - name: Notifica Slack (opcional)
+        if: ${{ secrets.SLACK_WEBHOOK_URL != '' && (success() || failure()) }}
+        run: |
+          STATUS=${{ job.status }}
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"Deploy GCE ${STATUS} — ${{ github.sha }} (${{ github.actor }})\"}" \
+            "${{ secrets.SLACK_WEBHOOK_URL }}"

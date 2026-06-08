@@ -1,0 +1,45 @@
+[Unit]
+Description=Vycena (storyboard SaaS) Express server
+Documentation=https://github.com/Guilhermeartt/ia-generate-image-
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vycena
+Group=vycena
+WorkingDirectory=/opt/vycena
+EnvironmentFile=/etc/vycena/env
+ExecStart=/usr/bin/node server/geminiProxy.mjs
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Logs vão pro journald; o Cloud Ops Agent encaminha pro Google Cloud Logging.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vycena
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=no
+# Permite escrita só em /opt/vycena (uploads temporários, build)
+ReadWritePaths=/opt/vycena
+
+# Limites
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
