@@ -93,13 +93,24 @@ export const signToken = (payload) => {
 };
 
 export const verifyToken = (token) => {
+  if (typeof token !== 'string') return null;
   const [body, signature] = token.split('.');
   if (!body || !signature) return null;
   const expected = crypto.createHmac('sha256', appSecret).update(body).digest('base64url');
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
-  const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-  if (payload.exp && Date.now() > payload.exp) return null;
-  return payload;
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  // timingSafeEqual lança se os buffers têm tamanhos diferentes — comparar antes
+  // evita crash com tokens malformados (e não vaza timing, pois o tamanho esperado é público).
+  if (sigBuf.length !== expBuf.length) return null;
+  if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (payload.exp && Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    // body não é JSON válido → token inválido
+    return null;
+  }
 };
 
 // ── Encryption helpers ────────────────────────────────────────────────────────

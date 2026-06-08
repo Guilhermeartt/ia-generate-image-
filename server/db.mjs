@@ -10,10 +10,14 @@ export const projectRoot = path.resolve(__dirname, '..');
 export const nowIso = () => new Date().toISOString();
 export const id = (prefix) => `${prefix}_${crypto.randomUUID()}`;
 
-const dataDir = path.join(projectRoot, 'data');
-fs.mkdirSync(dataDir, { recursive: true });
+// Caminho do banco é configurável via DATABASE_FILE — permite que testes usem
+// um arquivo temporário (ou ':memory:') sem tocar no banco de produção/dev.
+const dbFile = process.env.DATABASE_FILE || path.join(projectRoot, 'data', 'saas.sqlite');
+if (dbFile !== ':memory:') {
+  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+}
 
-export const db = new DatabaseSync(path.join(dataDir, 'saas.sqlite'));
+export const db = new DatabaseSync(dbFile);
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
