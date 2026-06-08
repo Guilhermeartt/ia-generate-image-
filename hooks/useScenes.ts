@@ -200,7 +200,7 @@ export function useScenes({
       ].filter(Boolean).join('\n') || undefined;
 
       if (characterReferences.length > 0 || sceneReference || globalStyleReferences.length > 0) {
-        let modelToUse: string =
+        const modelToUse: string =
           imageModel === 'gemini-3-pro-image-preview'
             ? 'gemini-3-pro-image-preview'
             : imageModel === 'gemini-3.1-flash-image-preview'

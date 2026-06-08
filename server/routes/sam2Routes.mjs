@@ -46,7 +46,7 @@ export default function registerSam2Routes(app, { asyncRoute, imageJsonParser })
       throw toSam2Error(`SAM 2 indisponível em ${base}. Inicie o serviço Python ou configure SAM2_SERVICE_URL.`);
     }
 
-    let payload = null;
+    let payload;
     try {
       payload = await response.json();
     } catch {
@@ -92,7 +92,7 @@ export default function registerSam2Routes(app, { asyncRoute, imageJsonParser })
       throw toSam2Error(`SAM 2 indisponível em ${base}. Inicie o serviço Python ou configure SAM2_SERVICE_URL.`);
     }
 
-    let payload = null;
+    let payload;
     try {
       payload = await response.json();
     } catch {

@@ -89,7 +89,7 @@ const apiPost = async <T>(endpoint: string, body: unknown): Promise<T> => {
   } catch (networkErr: any) {
     const msg = `[${endpoint}] Erro de rede: ${networkErr?.message || networkErr}`;
     console.error(msg);
-    throw new Error(`Servidor inacessível — verifique se o servidor está rodando. (${networkErr?.message || 'network error'})`);
+    throw new Error(`Servidor inacessível — verifique se o servidor está rodando. (${networkErr?.message || 'network error'})`, { cause: networkErr });
   }
 
   const rawText = await response.text().catch(() => '');

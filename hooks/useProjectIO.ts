@@ -105,7 +105,7 @@ export function useProjectIO({
       const zip = new JSZip();
 
       const charactersWithPaths = characters.map(item => {
-        let newItem = { ...item };
+        const newItem = { ...item };
 
         if (item.imageUrl && item.imageMimeType) {
           const extension = item.imageMimeType.split('/')[1] || 'png';
@@ -144,7 +144,7 @@ export function useProjectIO({
       });
 
       const scenesWithPaths = scenes.map(item => {
-        let newItem = { ...item };
+        const newItem = { ...item };
         const sceneFolderName = `Cena_${item.scene_id}`;
 
         if (item.imageUrl && item.imageMimeType) {

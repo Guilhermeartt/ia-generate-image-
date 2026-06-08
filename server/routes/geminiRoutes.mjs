@@ -263,8 +263,8 @@ const parseJson = (text, errorMessage) => {
   const fenceMatch = jsonText.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
   if (fenceMatch) jsonText = fenceMatch[1].trim();
   // As a last resort, try to extract the first JSON object or array.
-  if (!/^[{\[]/.test(jsonText)) {
-    const extracted = jsonText.match(/[{\[][\s\S]*[}\]]/);
+  if (!/^[{[]/.test(jsonText)) {
+    const extracted = jsonText.match(/[{[][\s\S]*[}\]]/);
     if (extracted) jsonText = extracted[0];
   }
   try {

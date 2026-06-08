@@ -672,7 +672,7 @@ const App: React.FC = () => {
 
     try {
       setProcessingMessage(isDocxFile(file) ? 'Lendo roteiro do arquivo Word...' : 'Lendo e analisando o arquivo CSV...');
-      let text = await file.text();
+      const text = await file.text();
       if (isDocxFile(file)) {
         const docxText = await extractTextFromDocx(file);
         setProcessingMessage('Organizando estrutura do storyboard...');

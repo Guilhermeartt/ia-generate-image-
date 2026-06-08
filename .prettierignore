@@ -1,0 +1,8 @@
+dist
+node_modules
+.venv-sam2
+data
+migrated_prompt_history
+public/sw.js
+package-lock.json
+index.html

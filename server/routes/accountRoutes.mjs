@@ -54,7 +54,7 @@ export default function registerAccountRoutes(app, { asyncRoute }) {
     } catch (err) {
       const msg = String(err?.message || err);
       if (msg.includes('API_KEY_INVALID') || msg.includes('401') || msg.includes('403')) {
-        throw new Error('A chave Gemini é inválida ou não tem permissão para esta API. Verifique o valor e tente novamente.');
+        throw new Error('A chave Gemini é inválida ou não tem permissão para esta API. Verifique o valor e tente novamente.', { cause: err });
       }
       // Other errors (network, quota) are non-fatal — save the key anyway.
     }
