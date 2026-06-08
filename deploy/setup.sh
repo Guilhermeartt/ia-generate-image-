@@ -62,8 +62,7 @@ install -d -m 750 -o "$APP_USER" -g "$APP_USER" "$ENV_DIR"
 # Se o repo ainda não foi clonado, alertar — quem clona é o operador
 if [[ ! -d "$APP_DIR/.git" ]]; then
   warn "$APP_DIR não tem clone do git. Clone com:"
-  warn "  sudo -u $APP_USER git clone https://github.com/Guilhermeartt/ia-generate-image-.git $APP_DIR-tmp"
-  warn "  sudo mv $APP_DIR-tmp/projeto/* $APP_DIR-tmp/projeto/.[^.]* $APP_DIR/"
+  warn "  sudo git clone https://github.com/Guilhermeartt/ia-generate-image-.git $APP_DIR"
   warn "  sudo chown -R $APP_USER:$APP_USER $APP_DIR"
 fi
 

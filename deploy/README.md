@@ -24,10 +24,7 @@ Logs systemd ───► Google Cloud Ops Agent ───► Cloud Logging
 1. **SSH na VM via console do GCP** (mais simples) ou `gcloud compute ssh`.
 2. Clonar o repositório:
    ```bash
-   sudo mkdir -p /opt/vycena-tmp
-   sudo git clone https://github.com/Guilhermeartt/ia-generate-image-.git /opt/vycena-tmp
-   sudo cp -r /opt/vycena-tmp/projeto/. /opt/vycena/
-   sudo rm -rf /opt/vycena-tmp
+   sudo git clone https://github.com/Guilhermeartt/ia-generate-image-.git /opt/vycena
    ```
 3. Rodar o setup:
    ```bash
