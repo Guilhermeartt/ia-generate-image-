@@ -17,6 +17,12 @@ fail() { printf '\n\033[1;31m[fail]\033[0m %s\n' "$*" >&2; exit 1; }
 
 cd "$APP_DIR"
 
+# Garante ownership do app user (caso o clone tenha sido feito como root)
+log "Normalizando ownership"
+chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+# Permite ao app user operar o repo mesmo após chown (git 2.35+ exige safe.dir)
+sudo -u "$APP_USER" git config --global --add safe.dir "$APP_DIR" 2>/dev/null || true
+
 log "Buscando atualizações"
 sudo -u "$APP_USER" git fetch origin
 PREVIOUS_HEAD="$(git rev-parse HEAD)"
