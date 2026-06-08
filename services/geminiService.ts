@@ -1,5 +1,6 @@
 import type { Character, CsvRow, StoryboardRow, ImageModel, SceneRefinement, TextAnalysisResult, StoryboardStructureConfig, SceneAnalysisConfig, ScenePromptJson } from '../types';
 import { getAuthToken, type CurrentUser } from './saasService';
+import { apiFetch as csrfFetch } from './httpClient';
 
 type SceneAnalysisResult = {
   tagged_description: string;
@@ -60,7 +61,7 @@ export interface GeminiServerStatus {
 }
 
 export const getGeminiServerStatus = async (): Promise<GeminiServerStatus> => {
-  const response = await fetch('/api/gemini/status');
+  const response = await csrfFetch('/api/gemini/status');
   if (!response.ok) return { hasPlatformKey: false };
   return response.json();
 };
@@ -74,26 +75,16 @@ const emitUser = (user?: CurrentUser): void => {
 };
 
 const apiPost = async <T>(endpoint: string, body: unknown): Promise<T> => {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
   const userApiKey = getStoredApiKey();
-  if (userApiKey) {
-    headers['x-gemini-api-key'] = userApiKey;
-  }
-
   const authToken = getAuthToken();
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`;
-  }
 
   let response: Response;
   try {
-    response = await fetch(`/api/gemini/${endpoint}`, {
+    response = await csrfFetch(`/api/gemini/${endpoint}`, {
       method: 'POST',
-      headers,
       body: JSON.stringify(body),
+      authToken: authToken || undefined,
+      userApiKey: userApiKey || undefined,
     });
   } catch (networkErr: any) {
     const msg = `[${endpoint}] Erro de rede: ${networkErr?.message || networkErr}`;

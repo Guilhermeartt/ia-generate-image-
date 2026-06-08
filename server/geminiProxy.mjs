@@ -1,9 +1,14 @@
 import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'node:path';
 import fs from 'node:fs';
 import { projectRoot } from './db.mjs';
 import { optionalAuth, publicUser, getUserById } from './auth.mjs';
 import { recordUsage } from './billing.mjs';
+import { csrfMiddleware } from './csrf.mjs';
+import { requestLogger } from './requestLogger.mjs';
 
 import registerAuthRoutes from './routes/authRoutes.mjs';
 import registerAccountRoutes from './routes/accountRoutes.mjs';
@@ -11,6 +16,7 @@ import registerProjectRoutes from './routes/projectRoutes.mjs';
 import registerAdminRoutes from './routes/adminRoutes.mjs';
 import registerGeminiRoutes from './routes/geminiRoutes.mjs';
 import registerSam2Routes from './routes/sam2Routes.mjs';
+import registerHealthRoutes from './routes/healthRoutes.mjs';
 
 const app = express();
 const port = Number(process.env.API_PORT || 8787);
@@ -35,11 +41,56 @@ const loadEnvFile = (fileName) => {
 loadEnvFile('.env');
 loadEnvFile('.env.local');
 
+// ── Fail-fast: variáveis obrigatórias em produção ─────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  const required = ['APP_SECRET', 'APP_ENCRYPTION_KEY', 'PUBLIC_URL'];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    console.error(`[FATAL] Variáveis obrigatórias ausentes em produção: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+  if (process.env.APP_SECRET && process.env.APP_SECRET.length < 32) {
+    console.error('[FATAL] APP_SECRET deve ter pelo menos 32 caracteres em produção.');
+    process.exit(1);
+  }
+}
+
+// ── Trust proxy: necessário atrás de Cloudflare/Fly/Render para req.ip correto e secure cookies
+app.set('trust proxy', 1);
+
+// ── Security headers via Helmet ───────────────────────────────────────────────
+// CSP é desabilitado aqui porque o app é uma SPA com inline scripts gerados pelo Vite;
+// reabilitamos com nonce após introduzir um build com nonce injection.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+// ── CORS ──────────────────────────────────────────────────────────────────────
+// Mesmo origin em produção (Express serve a SPA), mas mantemos config explícita
+// para permitir clientes alternativos (extensão, app desktop) via PUBLIC_URL.
+const allowedOrigins = (process.env.PUBLIC_URL || 'http://localhost:3000')
+  .split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // same-origin / curl
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origem não permitida pela política de CORS.'));
+  },
+  credentials: true,
+}));
+
+app.use(cookieParser());
+
+// ── Request logger com x-request-id e sanitização de campos sensíveis ─────────
+app.use(requestLogger);
+
 // Text endpoints can receive large scripts/CSV; image endpoints need even more.
 app.use(express.json({ limit: '20mb' }));
 const imageJsonParser = express.json({ limit: '75mb' });
 
 app.use(optionalAuth);
+app.use(csrfMiddleware);
 
 // ── Shared route helper ───────────────────────────────────────────────────────
 const asyncRoute = (handler) => async (req, res) => {
@@ -60,6 +111,7 @@ const asyncRoute = (handler) => async (req, res) => {
 const deps = { asyncRoute, imageJsonParser };
 
 // ── Register routes ───────────────────────────────────────────────────────────
+registerHealthRoutes(app, deps);
 registerAuthRoutes(app, deps);
 registerAccountRoutes(app, deps);
 registerProjectRoutes(app, deps);

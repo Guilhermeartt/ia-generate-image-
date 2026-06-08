@@ -12,6 +12,8 @@ import { useCharacters } from './hooks/useCharacters';
 import { useScenes } from './hooks/useScenes';
 import { useBatchGeneration } from './hooks/useBatchGeneration';
 import { useProjectIO } from './hooks/useProjectIO';
+import { useAutosave } from './hooks/useAutosave';
+import { loadDraft, clearDraft, draftHasContent, type DraftState } from './utils/localDraft';
 import {
   generateGeneralContext,
   generateCharacters,
@@ -56,6 +58,7 @@ import {
   getCurrentUser,
   type CurrentUser,
 } from './services/saasService';
+import { primeCsrfCookie } from './services/httpClient';
 
 /** Retorna um rótulo curto do modelo para exibição na interface. */
 const modelLabel = (model: string): string => {
@@ -176,6 +179,7 @@ const App: React.FC = () => {
   const [graphicStyleSceneId, setGraphicStyleSceneId] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isHydrating, setIsHydrating] = useState<boolean>(true);
 
   const showToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -284,6 +288,8 @@ const App: React.FC = () => {
     setShowAnalysisReport(false);
     setGlobalStyle(null);
     setReferenceImage(null);
+    setStoryboardRows([]);
+    void clearDraft();
   }, [setCharacters, setScenes]);
 
   // We declare cloudProjectId state above so it's available for the hook
@@ -327,6 +333,72 @@ const App: React.FC = () => {
     setActiveView,
     setIsAuthOpen,
     getImageDimensions,
+  });
+
+  // ── Hidratação inicial a partir do rascunho local (IndexedDB) ───────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const draft = await loadDraft();
+      if (cancelled) return;
+      if (draftHasContent(draft) && draft) {
+        setGeneralContext(draft.generalContext);
+        setForcePortugueseText(draft.forcePortugueseText);
+        setCharacters(draft.characters);
+        setScenes(draft.scenes);
+        setStoryboardRows(draft.storyboardRows);
+        setGlobalStyle(draft.globalStyle);
+        setReferenceImage(draft.referenceImage);
+        setCloudProjectId(draft.cloudProjectId);
+        setImageModel(draft.imageModel);
+        setCharacterImageModel(draft.characterImageModel);
+        setAspectRatio(draft.aspectRatio);
+        setResolution(draft.resolution);
+        setNumberOfImages(draft.numberOfImages);
+        setActiveView(draft.activeView);
+        setScenesViewMode(draft.scenesViewMode);
+        setAvailableStyles(draft.availableStyles);
+        if (draft.fileMeta) {
+          setFile(new File([new Blob([])], draft.fileMeta.name, { type: draft.fileMeta.type }));
+        }
+        if (draft.characters.length > 0 || draft.scenes.length > 0) {
+          setProcessingState('done');
+        }
+        showToast('Sessão restaurada', 'success');
+      }
+      setIsHydrating(false);
+    })();
+    return () => { cancelled = true; };
+  }, [setCharacters, setScenes, showToast]);
+
+  // ── Autosave: rascunho local (1s) e nuvem se logado (5s) ───────────────
+  const autosaveDraft: DraftState = {
+    version: 1,
+    updatedAt: 0,
+    fileMeta: file ? { name: file.name, type: file.type } : null,
+    generalContext,
+    forcePortugueseText,
+    characters,
+    scenes,
+    storyboardRows,
+    globalStyle,
+    referenceImage,
+    cloudProjectId,
+    imageModel,
+    characterImageModel,
+    aspectRatio,
+    resolution,
+    numberOfImages,
+    activeView,
+    scenesViewMode,
+    availableStyles,
+  };
+  useAutosave({
+    enabled: !isHydrating,
+    draft: autosaveDraft,
+    currentUser,
+    cloudProjectId,
+    setCloudProjectId,
   });
 
   // ── Action log: observa batchProgress (lote de imagens) ─────────────────
@@ -386,6 +458,9 @@ const App: React.FC = () => {
 
     // Apply saved theme on mount
     document.documentElement.setAttribute('data-theme', localStorage.getItem('app-theme') || 'dark');
+
+    // Garante que o cookie CSRF está disponível antes de qualquer POST.
+    void primeCsrfCookie();
 
     // Register cost emitter so every Gemini API text call is tracked
     registerCostEmitter(({ operation, model, inputTokens, outputTokens, costBRL }) => {

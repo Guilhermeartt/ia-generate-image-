@@ -127,6 +127,8 @@ export const publicUser = (user) => {
     id: user.id,
     name: user.name,
     email: user.email,
+    emailVerified: Boolean(user.email_verified_at),
+    emailVerifiedAt: user.email_verified_at || null,
     aiBillingMode: user.ai_billing_mode,
     planId: user.plan_id,
     creditBalance: Number(balanceRow?.balance || 0),
@@ -181,6 +183,22 @@ export const requireAuth = (req, res, next) => {
 export const requireAdmin = (req, res, next) => {
   requireAuth(req, res, () => {
     if (!isAdminUser(req.user)) return res.status(403).json({ error: 'Acesso administrativo não autorizado.' });
+    next();
+  });
+};
+
+// ── Email verification gating ────────────────────────────────────────────────
+// Use em rotas sensíveis (billing, checkout). Em dev pode ser desativado com
+// REQUIRE_EMAIL_VERIFICATION=0.
+export const requireVerifiedEmail = (req, res, next) => {
+  requireAuth(req, res, () => {
+    if (process.env.REQUIRE_EMAIL_VERIFICATION === '0') return next();
+    if (!req.user.email_verified_at) {
+      return res.status(403).json({
+        error: 'Verifique seu e-mail para continuar.',
+        code: 'email_not_verified',
+      });
+    }
     next();
   });
 };

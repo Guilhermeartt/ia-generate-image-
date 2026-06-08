@@ -123,7 +123,26 @@ db.exec(`
     created_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS email_verifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 `);
+
+// ── Migrations idempotentes (para bancos pré-existentes) ─────────────────────
+const addColumnIfMissing = (table, column, definition) => {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+};
+addColumnIfMissing('users', 'email_verified_at', 'TEXT');
 
 const seedPlans = db.prepare(`
   INSERT OR IGNORE INTO plans (id, name, monthly_credits, max_projects, max_scenes_per_script, allow_user_api_key, price_brl)

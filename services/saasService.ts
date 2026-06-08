@@ -1,9 +1,12 @@
 import type { ProjectState } from '../types';
+import { apiFetch as csrfFetch, apiFetchJson } from './httpClient';
 
 export interface CurrentUser {
   id: string;
   name: string;
   email: string;
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
   aiBillingMode: 'platform' | 'user_key';
   planId: string;
   creditBalance: number;
@@ -58,40 +61,25 @@ export const clearAuthToken = async (): Promise<void> => {
   } catch {}
   // Tell the server to clear the httpOnly cookie.
   try {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await csrfFetch('/api/auth/logout', { method: 'POST' });
   } catch {}
 };
 
-const apiFetch = async <T>(url: string, options: RequestInit = {}): Promise<T> => {
-  const token = getAuthToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
-  };
-
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const response = await fetch(url, { ...options, headers });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(payload.error || 'Falha na comunicação com o servidor.');
-  }
-
-  return payload as T;
-};
+const apiFetch = <T>(url: string, options: RequestInit = {}): Promise<T> =>
+  apiFetchJson<T>(url, { ...options, authToken: getAuthToken() || undefined });
 
 export const registerAccount = async (
   name: string,
   email: string,
   password: string
-): Promise<CurrentUser> => {
-  const payload = await apiFetch<{ user: CurrentUser; token: string }>('/api/auth/register', {
+): Promise<CurrentUser & { devVerificationToken?: string }> => {
+  const payload = await apiFetch<{ user: CurrentUser; token: string; devVerificationToken?: string }>('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({ name, email, password }),
   });
   setAuthToken(payload.token);
-  return payload.user;
+  // Anexa o token de dev na própria struct do user para que o UI consiga exibir.
+  return { ...payload.user, devVerificationToken: payload.devVerificationToken };
 };
 
 export const loginAccount = async (
@@ -113,6 +101,17 @@ export const requestPasswordReset = async (
     method: 'POST',
     body: JSON.stringify({ email }),
   });
+};
+
+export const verifyEmail = async (token: string): Promise<{ user: CurrentUser; message: string }> => {
+  return apiFetch('/api/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+};
+
+export const resendEmailVerification = async (): Promise<{ ok: boolean; message: string; devVerificationToken?: string }> => {
+  return apiFetch('/api/auth/resend-verification', { method: 'POST' });
 };
 
 export const resetPassword = async (

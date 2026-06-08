@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { db, nowIso, id } from '../db.mjs';
 import {
   requireAuth,
+  requireVerifiedEmail,
   getUserById,
   getUserPlan,
   publicUser,
@@ -107,7 +108,7 @@ export default function registerAccountRoutes(app, { asyncRoute }) {
   });
 
   // ── Billing ───────────────────────────────────────────────────────────────
-  app.post('/api/billing/mock-upgrade', requireAuth, asyncRoute(async (req) => {
+  app.post('/api/billing/mock-upgrade', requireVerifiedEmail, asyncRoute(async (req) => {
     const planId = String(req.body.planId || '');
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(planId);
     if (!plan) throw new Error('Plano não encontrado.');
@@ -133,7 +134,7 @@ export default function registerAccountRoutes(app, { asyncRoute }) {
     return { user: publicUser(getUserById(req.user.id)) };
   }));
 
-  app.post('/api/billing/checkout', requireAuth, asyncRoute(async (req) => {
+  app.post('/api/billing/checkout', requireVerifiedEmail, asyncRoute(async (req) => {
     const planId = String(req.body.planId || '');
     const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(planId);
     if (!plan) throw new Error('Plano não encontrado.');
