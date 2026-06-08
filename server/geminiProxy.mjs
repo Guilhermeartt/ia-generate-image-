@@ -71,16 +71,29 @@ app.use(helmet({
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // Mesmo origin em produção (Express serve a SPA), mas mantemos config explícita
 // para permitir clientes alternativos (extensão, app desktop) via PUBLIC_URL.
-const allowedOrigins = (process.env.PUBLIC_URL || 'http://localhost:3000')
-  .split(',').map((o) => o.trim()).filter(Boolean);
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // same-origin / curl
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Origem não permitida pela política de CORS.'));
-  },
-  credentials: true,
-}));
+// Lista de origens explicitamente permitidas (separadas por vírgula em PUBLIC_URL).
+const explicitOrigins = new Set(
+  (process.env.PUBLIC_URL || 'http://localhost:3000')
+    .split(',').map((o) => o.trim()).filter(Boolean)
+);
+app.use((req, res, next) => {
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // same-origin nav / curl
+      // Permite explicitamente o PUBLIC_URL.
+      if (explicitOrigins.has(origin)) return callback(null, true);
+      // Permite quando a Origin é a mesma do Host atual — cobre acesso por IP,
+      // domínio novo, ou múltiplos hosts atrás do mesmo backend.
+      try {
+        const originHost = new URL(origin).host;
+        const reqHost = req.get('host') || '';
+        if (originHost && originHost === reqHost) return callback(null, true);
+      } catch { /* origin malformado */ }
+      return callback(new Error('Origem não permitida pela política de CORS.'));
+    },
+    credentials: true,
+  })(req, res, next);
+});
 
 app.use(cookieParser());
 
