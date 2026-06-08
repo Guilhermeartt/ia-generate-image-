@@ -59,6 +59,7 @@ import {
   type CurrentUser,
 } from './services/saasService';
 import { primeCsrfCookie } from './services/httpClient';
+import AdminPanel from './components/AdminPanel';
 
 /** Retorna um rótulo curto do modelo para exibição na interface. */
 const modelLabel = (model: string): string => {
@@ -180,6 +181,7 @@ const App: React.FC = () => {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHydrating, setIsHydrating] = useState<boolean>(true);
+  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
 
   const showToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -462,6 +464,16 @@ const App: React.FC = () => {
     // Garante que o cookie CSRF está disponível antes de qualquer POST.
     void primeCsrfCookie();
 
+    // Atalho Ctrl/⌘+Shift+A para abrir o painel admin
+    const handleAdminShortcut = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        setIsAdminOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', handleAdminShortcut);
+    const cleanupShortcut = () => window.removeEventListener('keydown', handleAdminShortcut);
+
     // Register cost emitter so every Gemini API text call is tracked
     registerCostEmitter(({ operation, model, inputTokens, outputTokens, costBRL }) => {
       setTextCosts(prev => [...prev, {
@@ -490,6 +502,8 @@ const App: React.FC = () => {
     getCurrentUser().then(user => {
       if (user) setCurrentUser(user);
     });
+
+    return cleanupShortcut;
   }, []);
 
   const handleFileChange = (selectedFile: File) => {
@@ -2674,6 +2688,26 @@ REGRAS ESTRITAS:
       )}
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
+
+      {currentUser?.isAdmin && !isAdminOpen && (
+        <button
+          onClick={() => setIsAdminOpen(true)}
+          title="Painel administrativo (Ctrl/⌘+Shift+A)"
+          style={{
+            position: 'fixed', bottom: 16, right: 16, zIndex: 900,
+            background: '#bf3989', color: 'white', border: 'none',
+            padding: '10px 16px', borderRadius: 999, cursor: 'pointer',
+            fontWeight: 600, fontSize: 13,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          }}
+        >
+          ⚙ Admin
+        </button>
+      )}
+
+      {isAdminOpen && currentUser?.isAdmin && (
+        <AdminPanel onClose={() => setIsAdminOpen(false)} />
+      )}
     </div>
   );
 };

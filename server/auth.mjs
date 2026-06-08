@@ -9,9 +9,15 @@ if (process.env.NODE_ENV === 'production' && appSecret === DEFAULT_SECRET) {
   process.exit(1);
 }
 const encryptionSecret = process.env.APP_ENCRYPTION_KEY || appSecret;
-const adminEmails = new Set(String(process.env.ADMIN_EMAILS || '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean));
-
-export const isAdminUser = (user) => Boolean(user && adminEmails.has(String(user.email || '').toLowerCase()));
+// Lê em runtime para que o .env carregado APÓS os imports do server seja respeitado.
+export const isAdminUser = (user) => {
+  if (!user) return false;
+  const list = String(process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(String(user.email || '').toLowerCase());
+};
 
 // ── In-memory rate limiter ────────────────────────────────────────────────────
 const _rateLimitStore = new Map();

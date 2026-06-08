@@ -291,3 +291,100 @@ export const getUsageSummary = async (): Promise<UsageSummary> => {
 export const getAdminSummary = async (): Promise<AdminSummary> => {
   return apiFetch<AdminSummary>('/api/admin/summary');
 };
+
+// ── Admin: gerenciamento de usuários, pagamentos e webhooks ──────────────────
+
+export interface AdminUserListItem {
+  id: string;
+  name: string;
+  email: string;
+  planId: string;
+  aiBillingMode: 'platform' | 'user_key';
+  emailVerifiedAt: string | null;
+  createdAt: string;
+  stripeCustomerId: string | null;
+  creditBalance: number;
+  projectCount: number;
+  lastUsageAt: string | null;
+}
+
+export interface AdminUserList {
+  users: AdminUserListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminUserDetail {
+  user: CurrentUser;
+  usageByOperation: Array<{ operation: string; model: string; calls: number; costBrl: number; creditCost: number }>;
+  recentUsage: Array<{ operation: string; model: string; costBrl: number; creditCost: number; createdAt: string }>;
+  creditHistory: Array<{ type: string; amount: number; balanceAfter: number; description: string | null; createdAt: string }>;
+  payments: Array<{ id: string; provider: string; amountBrl: number; status: string; receiptUrl: string | null; createdAt: string; stripeInvoiceId: string | null }>;
+  subscriptions: Array<{ id: string; planId: string; status: string; currentPeriodEnd: string | null; cancelAtPeriodEnd: number; stripeSubscriptionId: string | null; createdAt: string; updatedAt: string }>;
+}
+
+export interface AdminPayment {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  provider: string;
+  providerPaymentId: string | null;
+  amountBrl: number;
+  status: string;
+  metadataJson: string | null;
+  createdAt: string;
+  receiptUrl: string | null;
+  stripeInvoiceId: string | null;
+}
+
+export interface StripeEventRow {
+  id: string;
+  type: string;
+  receivedAt: string;
+  processedAt: string | null;
+  error: string | null;
+}
+
+export const listAdminUsers = async (params: { search?: string; plan?: string; limit?: number; offset?: number } = {}): Promise<AdminUserList> => {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.plan) qs.set('plan', params.plan);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<AdminUserList>(`/api/admin/users${query}`);
+};
+
+export const getAdminUserDetail = async (userId: string): Promise<AdminUserDetail> => {
+  return apiFetch<AdminUserDetail>(`/api/admin/users/${encodeURIComponent(userId)}`);
+};
+
+export const adminGrantCredits = async (userId: string, amount: number, description?: string): Promise<{ ok: boolean; newBalance: number }> => {
+  return apiFetch(`/api/admin/users/${encodeURIComponent(userId)}/credits`, {
+    method: 'POST',
+    body: JSON.stringify({ amount, description }),
+  });
+};
+
+export const adminChangePlan = async (userId: string, planId: string): Promise<{ ok: boolean; user: CurrentUser }> => {
+  return apiFetch(`/api/admin/users/${encodeURIComponent(userId)}/plan`, {
+    method: 'POST',
+    body: JSON.stringify({ planId }),
+  });
+};
+
+export const listAdminPayments = async (params: { limit?: number; offset?: number } = {}): Promise<{ payments: AdminPayment[]; total: number; limit: number; offset: number }> => {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const query = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch(`/api/admin/payments${query}`);
+};
+
+export const listStripeEvents = async (onlyFailed = false, limit = 50): Promise<{ events: StripeEventRow[] }> => {
+  const qs = new URLSearchParams();
+  if (onlyFailed) qs.set('failed', '1');
+  qs.set('limit', String(limit));
+  return apiFetch(`/api/admin/stripe-events?${qs.toString()}`);
+};
