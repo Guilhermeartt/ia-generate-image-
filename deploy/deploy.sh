@@ -20,14 +20,22 @@ cd "$APP_DIR"
 # Garante ownership do app user (caso o clone tenha sido feito como root)
 log "Normalizando ownership"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
-# Permite ao app user operar o repo mesmo após chown (git 2.35+ exige safe.dir)
-sudo -u "$APP_USER" git config --global --add safe.dir "$APP_DIR" 2>/dev/null || true
+
+# git 2.35+ rejeita repos com ownership de outro user ("dubious ownership").
+# Configuramos safe.directory system-wide (vale pra root, vycena e qualquer outro user).
+if ! grep -q "safe.directory = $APP_DIR" /etc/gitconfig 2>/dev/null; then
+  git config --system --add safe.directory "$APP_DIR"
+fi
+
+# Helpers que rodam git com safe.directory inline (cinto + suspensório)
+GIT_APP=(sudo -u "$APP_USER" git -C "$APP_DIR" -c "safe.directory=$APP_DIR")
+GIT_ROOT=(git -C "$APP_DIR" -c "safe.directory=$APP_DIR")
 
 log "Buscando atualizações"
-sudo -u "$APP_USER" git fetch origin
-PREVIOUS_HEAD="$(git rev-parse HEAD)"
-sudo -u "$APP_USER" git reset --hard origin/main
-NEW_HEAD="$(git rev-parse HEAD)"
+"${GIT_APP[@]}" fetch origin
+PREVIOUS_HEAD="$("${GIT_ROOT[@]}" rev-parse HEAD)"
+"${GIT_APP[@]}" reset --hard origin/main
+NEW_HEAD="$("${GIT_ROOT[@]}" rev-parse HEAD)"
 log "HEAD: $PREVIOUS_HEAD → $NEW_HEAD"
 
 log "Instalando dependências (incluindo dev para o build)"
