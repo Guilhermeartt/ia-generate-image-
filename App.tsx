@@ -1,12 +1,13 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import type { Character, Scene, CsvRow, StoryboardRow, ImageModel, SavedAnalysis, AppSettings, ProjectState, TextAnalysisResult, AnalysisModalState, ImageRegion, RegionActionResult, GenerationSettings, SettingsPreset, TextCostEntry, TextError, BoundingBox } from './types';
 import Loader from './components/Loader';
 import CharacterCard from './components/CharacterCard';
 import SceneCard from './components/SceneCard';
 import HistoryLoader from './components/HistoryLoader';
-import SettingsModal from './components/SettingsModal';
-import TextAnalysisModal from './components/TextAnalysisModal';
-import ImageRegionSelectorModal from './components/ImageRegionSelectorModal';
+// ── Modais/views pesados carregados sob demanda (code-splitting) ─────────────
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const TextAnalysisModal = lazy(() => import('./components/TextAnalysisModal'));
+const ImageRegionSelectorModal = lazy(() => import('./components/ImageRegionSelectorModal'));
 import { useSettings } from './hooks/useSettings';
 import { useCharacters } from './hooks/useCharacters';
 import { useScenes } from './hooks/useScenes';
@@ -30,15 +31,17 @@ import {
 import { SparklesIcon, ReloadIcon, ArchiveIcon, SettingsIcon, FolderOpenIcon, GalleryIcon, CostReportIcon, SunIcon, MoonIcon, UploadIcon } from './components/icons';
 import ImagePreviewModal from './components/ImagePreviewModal';
 import QuickAnalyzer from './components/QuickAnalyzer';
-import ProjectGalleryModal, { ProjectImageItem } from './components/ProjectGalleryModal';
-import CostReportView from './components/CostReportView';
+import type { ProjectImageItem } from './components/ProjectGalleryModal';
+const ProjectGalleryModal = lazy(() => import('./components/ProjectGalleryModal'));
+const CostReportView = lazy(() => import('./components/CostReportView'));
 import { getStoredApiKey } from './services/geminiService';
 import { getGeminiServerStatus, type PlatformProvider } from './services/geminiService';
 import AuthModal from './components/AuthModal';
 import AccountModal from './components/AccountModal';
-import ScriptPasteModal from './components/ScriptPasteModal';
-import StyleSelectionModal, { type StyleOption } from './components/StyleSelectionModal';
-import AnalysisReportView from './components/AnalysisReportView';
+const ScriptPasteModal = lazy(() => import('./components/ScriptPasteModal'));
+import type { StyleOption } from './components/StyleSelectionModal';
+const StyleSelectionModal = lazy(() => import('./components/StyleSelectionModal'));
+const AnalysisReportView = lazy(() => import('./components/AnalysisReportView'));
 import SceneTableView from './components/SceneTableView';
 import StoryboardReviewView from './components/StoryboardReviewView';
 import CreditAlert from './components/CreditAlert';
@@ -59,7 +62,7 @@ import {
   type CurrentUser,
 } from './services/saasService';
 import { primeCsrfCookie } from './services/httpClient';
-import AdminPanel from './components/AdminPanel';
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
 
 /** Retorna um rótulo curto do modelo para exibição na interface. */
 const modelLabel = (model: string): string => {
@@ -2116,14 +2119,16 @@ REGRAS ESTRITAS:
         )}
 
         {processingState === 'done' && showAnalysisReport && (
-          <AnalysisReportView
-            characters={characters}
-            scenes={scenes}
-            fileName={file?.name ?? ''}
-            globalStyle={globalStyle?.label ?? ''}
-            onContinue={() => setShowAnalysisReport(false)}
-            onNavigate={(view) => setActiveView(view)}
-          />
+          <Suspense fallback={<Loader message="Carregando relatório…" />}>
+            <AnalysisReportView
+              characters={characters}
+              scenes={scenes}
+              fileName={file?.name ?? ''}
+              globalStyle={globalStyle?.label ?? ''}
+              onContinue={() => setShowAnalysisReport(false)}
+              onNavigate={(view) => setActiveView(view)}
+            />
+          </Suspense>
         )}
 
         {processingState === 'done' && !showAnalysisReport && (
@@ -2232,13 +2237,15 @@ REGRAS ESTRITAS:
                     <p className="section-sub">Consumo de tokens e custo estimado por chamada de API neste projeto.</p>
                   </div>
                 </div>
-                <CostReportView
-                  characters={characters}
-                  scenes={scenes}
-                  textCosts={textCosts}
-                  apiSourceLabel={apiSourceInfo.label}
-                  apiSourceDescription={apiSourceInfo.description}
-                />
+                <Suspense fallback={<Loader message="Carregando relatório…" />}>
+                  <CostReportView
+                    characters={characters}
+                    scenes={scenes}
+                    textCosts={textCosts}
+                    apiSourceLabel={apiSourceInfo.label}
+                    apiSourceDescription={apiSourceInfo.description}
+                  />
+                </Suspense>
               </section>
             )}
 
@@ -2589,48 +2596,58 @@ REGRAS ESTRITAS:
         const item = regionSelectorState.item;
         const isScene = typeof (item as Scene).id === 'number';
         return (
-          <ImageRegionSelectorModal
-            isOpen={!!regionSelectorState}
-            imageUrl={item.imageUrl!}
-            onClose={() => setRegionSelectorState(null)}
-            onConfirm={handleConfirmRegionForAnalysis}
-            initialMode={regionSelectorState.initialMode ?? 'analyze'}
-            references={isScene ? (item as Scene).references ?? [] : undefined}
-            onReferencesChange={isScene ? (updater => handleSceneReferencesChange((item as Scene).id, updater)) : undefined}
-          />
+          <Suspense fallback={null}>
+            <ImageRegionSelectorModal
+              isOpen={!!regionSelectorState}
+              imageUrl={item.imageUrl!}
+              onClose={() => setRegionSelectorState(null)}
+              onConfirm={handleConfirmRegionForAnalysis}
+              initialMode={regionSelectorState.initialMode ?? 'analyze'}
+              references={isScene ? (item as Scene).references ?? [] : undefined}
+              onReferencesChange={isScene ? (updater => handleSceneReferencesChange((item as Scene).id, updater)) : undefined}
+            />
+          </Suspense>
         );
       })()}
 
       {analysisModalState && (
-        <TextAnalysisModal
-          state={analysisModalState}
-          onClose={() => setAnalysisModalState(null)}
-          onApplyCorrection={handleApplyTextCorrection}
-          onRegenerateWithCorrection={handleRegenerateWithCorrection}
-          onInpaintCorrection={handleInpaintCorrection}
-        />
+        <Suspense fallback={null}>
+          <TextAnalysisModal
+            state={analysisModalState}
+            onClose={() => setAnalysisModalState(null)}
+            onApplyCorrection={handleApplyTextCorrection}
+            onRegenerateWithCorrection={handleRegenerateWithCorrection}
+            onInpaintCorrection={handleInpaintCorrection}
+          />
+        </Suspense>
       )}
 
-      {isLoaded && (
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          initialSettings={settings}
-          onSave={handleSaveSettings}
-          currentUser={currentUser}
-          onUserUpdate={setCurrentUser}
-          platformProvider={platformProvider}
-        />
+      {isLoaded && isSettingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            initialSettings={settings}
+            onSave={handleSaveSettings}
+            currentUser={currentUser}
+            onUserUpdate={setCurrentUser}
+            platformProvider={platformProvider}
+          />
+        </Suspense>
       )}
 
-      <ProjectGalleryModal
-        isOpen={isGalleryOpen}
-        characters={characters}
-        scenes={scenes}
-        onClose={() => setIsGalleryOpen(false)}
-        onApplyEdit={handleEditProjectImage}
-        isEditing={isGalleryEditing}
-      />
+      {isGalleryOpen && (
+        <Suspense fallback={null}>
+          <ProjectGalleryModal
+            isOpen={isGalleryOpen}
+            characters={characters}
+            scenes={scenes}
+            onClose={() => setIsGalleryOpen(false)}
+            onApplyEdit={handleEditProjectImage}
+            isEditing={isGalleryEditing}
+          />
+        </Suspense>
+      )}
 
       <AuthModal
         isOpen={isAuthOpen}
@@ -2646,15 +2663,20 @@ REGRAS ESTRITAS:
         onLoadProject={handleLoadCloudProject}
       />
 
-      <ScriptPasteModal
-        isOpen={isScriptPasteOpen}
-        onClose={() => setIsScriptPasteOpen(false)}
-        onFileReady={handleFileChange}
-        maxScenesLimit={currentUser?.plan?.maxScenesPerScript || (getStoredApiKey() ? 120 : 20)}
-        promptTemplate={settings.scriptStructuringPrompt}
-      />
+      {isScriptPasteOpen && (
+        <Suspense fallback={null}>
+          <ScriptPasteModal
+            isOpen={isScriptPasteOpen}
+            onClose={() => setIsScriptPasteOpen(false)}
+            onFileReady={handleFileChange}
+            maxScenesLimit={currentUser?.plan?.maxScenesPerScript || (getStoredApiKey() ? 120 : 20)}
+            promptTemplate={settings.scriptStructuringPrompt}
+          />
+        </Suspense>
+      )}
 
       {showStyleModal && (
+        <Suspense fallback={null}>
         <StyleSelectionModal
           onConfirm={(style, refImg) => {
             setGlobalStyle(style);
@@ -2669,9 +2691,11 @@ REGRAS ESTRITAS:
             handleAnalyze(null, null);
           }}
         />
+        </Suspense>
       )}
 
       {graphicStyleSceneId !== null && (
+        <Suspense fallback={null}>
         <StyleSelectionModal
           onConfirm={(style) => {
             if (style) {
@@ -2685,6 +2709,7 @@ REGRAS ESTRITAS:
           }}
           onSkip={() => setGraphicStyleSceneId(null)}
         />
+        </Suspense>
       )}
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
@@ -2706,7 +2731,9 @@ REGRAS ESTRITAS:
       )}
 
       {isAdminOpen && currentUser?.isAdmin && (
-        <AdminPanel onClose={() => setIsAdminOpen(false)} />
+        <Suspense fallback={null}>
+          <AdminPanel onClose={() => setIsAdminOpen(false)} />
+        </Suspense>
       )}
     </div>
   );

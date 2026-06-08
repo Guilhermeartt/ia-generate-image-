@@ -16,6 +16,16 @@ export default defineConfig(({ mode }) => {
         },
       },
       plugins: [react()],
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              // Separa libs estáveis num chunk próprio (cacheável entre deploys).
+              'react-vendor': ['react', 'react-dom'],
+            },
+          },
+        },
+      },
       define: {
         'process.env.API_KEY': JSON.stringify(''),
         'process.env.GEMINI_API_KEY': JSON.stringify('')

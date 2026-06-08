@@ -1,13 +1,14 @@
-import * as Sentry from '@sentry/react';
-
 // ── Sentry client (browser) ──────────────────────────────────────────────────
-// Lê VITE_SENTRY_DSN do env do Vite. Sem DSN, fica desligado (zero overhead).
+// O SDK do Sentry (~94 KB) só é baixado se VITE_SENTRY_DSN estiver definido.
+// Sem DSN, nenhum byte do Sentry entra no bundle inicial (dynamic import).
 
-let _enabled = false;
+type SentryModule = typeof import('@sentry/react');
+let _sentry: SentryModule | null = null;
 
-export const initSentryClient = (): void => {
+export const initSentryClient = async (): Promise<void> => {
   const dsn = (import.meta as { env?: Record<string, string> }).env?.VITE_SENTRY_DSN;
   if (!dsn) return;
+  const Sentry = await import('@sentry/react');
   Sentry.init({
     dsn,
     environment: (import.meta as { env?: Record<string, string> }).env?.MODE || 'production',
@@ -16,21 +17,15 @@ export const initSentryClient = (): void => {
     replaysOnErrorSampleRate: 1.0,
     sendDefaultPii: false,
   });
-  _enabled = true;
+  _sentry = Sentry;
 };
 
-export const isSentryClientEnabled = (): boolean => _enabled;
+export const isSentryClientEnabled = (): boolean => _sentry !== null;
 
 export const setSentryUser = (user: { id: string; email?: string } | null): void => {
-  if (!_enabled) return;
-  if (user) {
-    Sentry.setUser({ id: user.id, email: user.email });
-  } else {
-    Sentry.setUser(null);
-  }
+  _sentry?.setUser(user ? { id: user.id, email: user.email } : null);
 };
 
 export const captureClientException = (err: unknown, context?: Record<string, unknown>): void => {
-  if (!_enabled) return;
-  Sentry.captureException(err, { extra: context });
+  _sentry?.captureException(err, { extra: context });
 };
