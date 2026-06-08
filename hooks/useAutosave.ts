@@ -40,8 +40,8 @@ export function useAutosave({
   const cloudInFlight = useRef(false);
 
   useEffect(() => {
-    if (!enabled) return;
-    if (draftIsEmpty(draft)) return;
+    if (!enabled) return undefined;
+    if (draftIsEmpty(draft)) return undefined;
 
     if (localTimer.current) clearTimeout(localTimer.current);
     localTimer.current = setTimeout(async () => {

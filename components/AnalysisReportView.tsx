@@ -158,7 +158,7 @@ const AVATAR_COLORS = [
 function useCountUp(target: number, duration = 800) {
   const [count, setCount] = useState(0);
   useEffect(() => {
-    if (target === 0) return;
+    if (target === 0) return undefined;
     const steps = 30;
     const step = target / steps;
     const interval = duration / steps;

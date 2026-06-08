@@ -206,7 +206,7 @@ const ShotTypeSelector: React.FC<Props> = ({ value, onChange, disabled }) => {
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const onDocClick = (e: MouseEvent) => {
       const t = e.target as Node;
       if (wrapRef.current?.contains(t)) return;

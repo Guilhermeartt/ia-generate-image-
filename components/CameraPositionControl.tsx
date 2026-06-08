@@ -60,7 +60,7 @@ const POSITION_MARKERS = CAMERA_POSITION_OPTIONS.map(option => {
 
 const positionForAngle = (deg: number): CameraPositionId => {
   const normalized = normalizeDeg(deg);
-  let best = CAMERA_POSITION_OPTIONS[0].id;
+  let best: CameraPositionId = CAMERA_POSITION_OPTIONS[0].id;
   let bestDistance = Infinity;
   for (const option of CAMERA_POSITION_OPTIONS) {
     const distance = angleDistance(normalized, POSITION_ANGLES[option.id]);

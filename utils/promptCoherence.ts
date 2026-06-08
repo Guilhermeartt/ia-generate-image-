@@ -141,7 +141,9 @@ const hasShallowDoF = (json: ScenePromptJson): boolean => {
 };
 
 const hasNoCharacters = (json: ScenePromptJson): boolean => {
-  const chars = json.characters;
+  // O modelo às vezes devolve `characters` como string em vez de array,
+  // por isso o tratamento defensivo via unknown (o tipo declara só array).
+  const chars: unknown = json.characters;
   if (Array.isArray(chars)) return chars.length === 0;
   if (typeof chars === 'string') return chars.trim().length === 0;
   return true;

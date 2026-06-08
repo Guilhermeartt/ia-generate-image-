@@ -16,6 +16,5 @@ export default defineConfig({
     // Cada arquivo de teste roda em seu próprio processo, isolando o estado do
     // módulo db.mjs (singleton SQLite) entre suites.
     pool: 'forks',
-    poolOptions: { forks: { singleFork: false } },
   },
 });
