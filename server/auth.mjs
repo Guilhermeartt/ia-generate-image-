@@ -48,16 +48,20 @@ export const parseCookies = (req) => {
   );
 };
 export const setAuthCookie = (res, token) => {
+  // secure baseado em res.req.secure (Express respeita trust proxy).
+  // Permite HTTP transitório enquanto não há TLS; em HTTPS já marca como secure.
+  const isSecure = Boolean(res.req?.secure);
   res.cookie(AUTH_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: isSecure,
+    sameSite: 'lax',
     maxAge: 1000 * 60 * 60 * 24 * 30,
     path: '/',
   });
 };
 export const clearAuthCookie = (res) => {
-  res.clearCookie(AUTH_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/' });
+  const isSecure = Boolean(res.req?.secure);
+  res.clearCookie(AUTH_COOKIE, { httpOnly: true, secure: isSecure, sameSite: 'lax', path: '/' });
 };
 
 // ── Password & token helpers ──────────────────────────────────────────────────

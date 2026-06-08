@@ -24,10 +24,12 @@ const ensureCookie = (req, res) => {
   let token = req.cookies?.[CSRF_COOKIE];
   if (!token) {
     token = generateToken();
+    // secure baseado na request real (não no NODE_ENV). Em HTTP transitório
+    // (sem TLS ainda), o cookie precisa ser não-secure pra ser setado.
     res.cookie(CSRF_COOKIE, token, {
       httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: Boolean(req.secure),
+      sameSite: 'lax',
       maxAge: 1000 * 60 * 60 * 24 * 30,
       path: '/',
     });
