@@ -81,7 +81,7 @@ export function useBatchGeneration({
     generateAllImagesInSequence(
       characters,
       setIsGeneratingAllChars,
-      handleGenerateCharacterImage,
+      (id) => handleGenerateCharacterImage(String(id)),
       (item) => (item as Character).name,
       'retrato'
     );
@@ -113,7 +113,7 @@ export function useBatchGeneration({
     generateAllImagesInSequence(
       ordered,
       setIsGeneratingAllScenes,
-      handleGenerateSceneImage,
+      (id) => handleGenerateSceneImage(Number(id)),
       (item) => {
         const scene = item as Scene;
         return `cena ${scene.scene_id}-${scene.sub_id}`;
