@@ -24,6 +24,7 @@ import SceneSplitSuggestion from './SceneSplitSuggestion';
 import SceneActionButtons from './SceneActionButtons';
 import SceneSplitGrid from './SceneSplitGrid';
 import SceneReferencePanel from './SceneReferencePanel';
+import SceneGenerationChecklist from './SceneGenerationChecklist';
 import { CREATIVE_DIRECTION_SUGGESTIONS } from './sceneCard.constants';
 
 interface SceneCardProps {
@@ -123,8 +124,12 @@ const SceneCard: React.FC<SceneCardProps> = ({
     let identifier: string | number = '';
     if (scene.continuationReferenceId) {
       identifier = `Ordem ${scene.continuationReferenceId}`;
-      referenceScene = scenes.find(s => s.order === scene.continuationReferenceId);
-      if (!referenceScene) isValid = false;
+      if (scene.continuationReferenceId === scene.order) {
+        isValid = false;
+      } else {
+        referenceScene = scenes.find(s => s.order === scene.continuationReferenceId);
+        if (!referenceScene) isValid = false;
+      }
     } else if (sceneIndex > 0) {
       identifier = 'anterior';
       referenceScene = scenes[sceneIndex - 1];
@@ -427,9 +432,18 @@ const SceneCard: React.FC<SceneCardProps> = ({
         </div>
         <button
           onClick={() => onVisualize(scene.id)}
-          disabled={!referenceSceneData.isValid || referenceSceneData.isImageMissing}
+          disabled={!scene.image_prompt.trim() || !referenceSceneData.isValid || referenceSceneData.isImageMissing}
           className="btn btn-primary"
           style={{ fontSize: 12 }}
+          title={
+            !scene.image_prompt.trim()
+              ? 'Preencha o prompt da imagem antes de gerar.'
+              : !referenceSceneData.isValid
+                ? 'Corrija a ordem da cena de continuidade antes de gerar.'
+                : referenceSceneData.isImageMissing
+                  ? 'Gere primeiro a imagem da cena usada como referência.'
+                  : 'Gerar a visualização da cena'
+          }
         >
           <SparklesIcon width={13} height={13} />
           Gerar Visualização
@@ -445,14 +459,14 @@ const SceneCard: React.FC<SceneCardProps> = ({
 
   return (
     <>
-      <div className="card card-hover anim-up" style={{
+      <div className="card card-hover anim-up scene-card-root" style={{
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'row',
         minHeight: 220,
       }}>
         {/* ── Image panel (left, 36%) ── */}
-        <div style={{ width: '36%', flexShrink: 0, position: 'relative', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
+        <div className="scene-card-image-panel" style={{ width: '36%', flexShrink: 0, position: 'relative', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
           {renderImagePanel()}
         </div>
 
@@ -541,6 +555,12 @@ const SceneCard: React.FC<SceneCardProps> = ({
           />
 
           <SceneLettering scene={scene} onIncludeLetteringChange={onIncludeLetteringChange} />
+
+          <SceneGenerationChecklist
+            scene={scene}
+            characters={characters}
+            referenceSceneData={referenceSceneData}
+          />
 
           {/* ── Split suggestion ── */}
           <SceneSplitSuggestion scene={scene} onOpenSplit={() => setIsSplitModalOpen(true)} />
@@ -844,7 +864,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
             <span style={{ fontSize: 10, color: 'var(--text-4)' }}>Início → Fim · Runway / Kling / Pika</span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center' }}>
+          <div className="scene-end-frame-grid" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center' }}>
             {/* Start frame */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Frame inicial</p>
@@ -862,7 +882,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
             </div>
 
             {/* Arrow */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div className="scene-end-frame-arrow" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#34D399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12"/>
                 <polyline points="12 5 19 12 12 19"/>

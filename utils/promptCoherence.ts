@@ -435,3 +435,29 @@ export const serializeImagePrompt = (
 
   return JSON.stringify(finalJson, null, 2);
 };
+
+const TEXT_POLICY_MARKER = 'CRITICAL VISIBLE TEXT POLICY:';
+
+/**
+ * Last-mile text policy applied immediately before image generation.
+ * This also protects legacy or manually edited prompts that do not use
+ * prompt_json, plus derivative generations such as the final video frame.
+ */
+export const applyVisibleTextPolicy = (
+  prompt: string,
+  includeLettering: boolean | undefined,
+  letteringNotes?: string[],
+): string => {
+  const basePrompt = prompt.trim();
+  const notes = (letteringNotes ?? []).map(note => note.trim()).filter(Boolean);
+  const shouldRenderText = includeLettering !== false && notes.length > 0;
+  const promptWithoutPreviousPolicy = basePrompt
+    .replace(/\n*\n*CRITICAL VISIBLE TEXT POLICY:[\s\S]*$/i, '')
+    .trim();
+
+  const policy = shouldRenderText
+    ? `${TEXT_POLICY_MARKER} The only visible text allowed is the exact lettering below. Preserve spelling, casing, accents, line order, and punctuation. Do not invent any other words, letters, numbers, logos, captions, subtitles, signs, watermarks, or typography.\n${notes.join('\n')}`
+    : `${TEXT_POLICY_MARKER} Render no visible text of any kind. Remove or avoid all words, letters, numbers, logos, captions, subtitles, signs, labels, watermarks, interface text, and typography, including text present in the reference image. Replace any such area naturally with scene-consistent visual detail.`;
+
+  return [promptWithoutPreviousPolicy, policy].filter(Boolean).join('\n\n');
+};

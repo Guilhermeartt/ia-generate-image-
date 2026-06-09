@@ -2,12 +2,17 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
 import type { Scene, SceneVideoLettering } from '@/types';
 import { StoryboardComposition, type StoryboardVideoScene } from './StoryboardComposition';
-import { createVideoScenes } from './videoScenes';
+import {
+  createVideoScenes,
+  selectedVideoImageSourcesForScene,
+  videoImageSourcesForScene,
+} from './videoScenes';
 
 interface VideoStudioProps {
   scenes: Scene[];
   aspectRatio: string;
   onLetteringChange: (sceneId: number, lettering: SceneVideoLettering | undefined) => void;
+  onImageSourcesChange: (sceneId: number, sourceIds: string[]) => void;
 }
 
 const FPS = 30;
@@ -20,25 +25,48 @@ const DIMENSIONS: Record<string, { width: number; height: number }> = {
   '3:4': { width: 1080, height: 1440 },
 };
 
-const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetteringChange }) => {
+const VideoStudio: React.FC<VideoStudioProps> = ({
+  scenes,
+  aspectRatio,
+  onLetteringChange,
+  onImageSourcesChange,
+}) => {
   const [secondsPerScene, setSecondsPerScene] = useState(3);
   const [showCaptions, setShowCaptions] = useState(true);
-  const [selectedSceneId, setSelectedSceneId] = useState<number | null>(null);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const playerRef = useRef<PlayerRef>(null);
   const videoScenes = useMemo(() => createVideoScenes(scenes), [scenes]);
   const dimensions = DIMENSIONS[aspectRatio] ?? DIMENSIONS['16:9'];
   const framesPerScene = secondsPerScene * FPS;
   const durationInFrames = Math.max(1, videoScenes.length * framesPerScene);
-  const missingImages = scenes.length - videoScenes.length;
-  const selectedScene = videoScenes.find((scene) => scene.id === selectedSceneId) ?? videoScenes[0];
+  const scenesWithoutSelectedImages = scenes.filter(
+    scene => selectedVideoImageSourcesForScene(scene).length === 0,
+  ).length;
+  const selectedClip = videoScenes.find((scene) => scene.id === selectedClipId) ?? videoScenes[0];
+  const selectedSourceScene = scenes.find(scene => scene.id === selectedClip?.sceneId);
+  const availableSources = selectedSourceScene ? videoImageSourcesForScene(selectedSourceScene) : [];
+  const selectedSourceIds = selectedSourceScene?.videoImageSourceIds
+    ?? [availableSources.find(source => source.id === 'main') ?? availableSources[0]]
+      .filter(Boolean)
+      .map(source => source.id);
 
   const updateLettering = (scene: StoryboardVideoScene, patch: Partial<SceneVideoLettering>) => {
-    onLetteringChange(scene.id, { ...scene.lettering, ...patch });
+    onLetteringChange(scene.sceneId, { ...scene.lettering, ...patch });
   };
 
   const selectScene = (scene: StoryboardVideoScene, index: number) => {
-    setSelectedSceneId(scene.id);
+    setSelectedClipId(scene.id);
     playerRef.current?.seekTo(index * framesPerScene);
+  };
+
+  const toggleImageSource = (sourceId: string) => {
+    if (!selectedSourceScene) return;
+    if (selectedSourceIds.includes(sourceId) && selectedSourceIds.length === 1) return;
+    const nextIds = selectedSourceIds.includes(sourceId)
+      ? selectedSourceIds.filter(id => id !== sourceId)
+      : [...selectedSourceIds, sourceId];
+    onImageSourcesChange(selectedSourceScene.id, nextIds);
   };
 
   if (videoScenes.length === 0) {
@@ -76,7 +104,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
         <div>
           <p className="section-title">Vídeo do storyboard</p>
           <p className="section-sub">
-            {videoScenes.length} cena{videoScenes.length !== 1 ? 's' : ''} •{' '}
+            {videoScenes.length} trecho{videoScenes.length !== 1 ? 's' : ''} •{' '}
             {videoScenes.length * secondsPerScene}s • Remotion Player
           </p>
         </div>
@@ -100,6 +128,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
           }}
         >
           <Player
+            key={previewRevision}
             ref={playerRef}
             component={StoryboardComposition}
             inputProps={{ scenes: videoScenes, framesPerScene, showCaptions }}
@@ -122,19 +151,19 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
           }}
         >
           <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 16 }}>
-            Lettering do vídeo
+            Montagem do vídeo
           </p>
 
           <label className="panel-field-label" htmlFor="video-lettering-scene">
-            Cena
+            Trecho
           </label>
           <select
             id="video-lettering-scene"
             className="field"
-            value={selectedScene?.id ?? ''}
+            value={selectedClip?.id ?? ''}
             onChange={(event) => {
               const index = videoScenes.findIndex(
-                (scene) => scene.id === Number(event.target.value),
+                (scene) => scene.id === event.target.value,
               );
               if (index >= 0) selectScene(videoScenes[index], index);
             }}
@@ -142,10 +171,53 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
           >
             {videoScenes.map((scene) => (
               <option key={scene.id} value={scene.id}>
-                {scene.title} — {scene.location || 'Sem local'}
+                {scene.title} — {scene.sourceLabel}
               </option>
             ))}
           </select>
+
+          <p className="panel-field-label">Imagens desta cena</p>
+          <div style={{ display: 'grid', gap: 7, marginBottom: 14 }}>
+            {availableSources.map(source => (
+              <label
+                key={source.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '16px 52px minmax(0, 1fr)',
+                  gap: 8,
+                  alignItems: 'center',
+                  padding: 7,
+                  borderRadius: 8,
+                  border: `1px solid ${selectedSourceIds.includes(source.id) ? 'var(--indigo-b)' : 'var(--border)'}`,
+                  background: selectedSourceIds.includes(source.id) ? 'var(--indigo-s)' : 'var(--surface-2)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedSourceIds.includes(source.id)}
+                  onChange={() => toggleImageSource(source.id)}
+                  aria-label={`Incluir ${source.label} no vídeo`}
+                />
+                <img
+                  src={source.imageUrl}
+                  alt=""
+                  style={{ width: 52, height: 32, objectFit: 'cover', borderRadius: 5 }}
+                />
+                <span style={{ fontSize: 11, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {source.label}
+                </span>
+              </label>
+            ))}
+          </div>
+          <p style={{ fontSize: 10, color: 'var(--text-4)', lineHeight: 1.45, margin: '-6px 0 14px' }}>
+            Você pode marcar várias imagens. Cada uma vira um trecho, seguindo a ordem exibida acima.
+            Ao menos uma imagem deve permanecer marcada.
+          </p>
+
+          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 12 }}>
+            Lettering do trecho
+          </p>
 
           <label className="panel-field-label" htmlFor="video-lettering-text">
             Texto
@@ -154,9 +226,9 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
             id="video-lettering-text"
             className="field"
             rows={5}
-            value={selectedScene?.lettering.text ?? ''}
+            value={selectedClip?.lettering.text ?? ''}
             onChange={(event) =>
-              selectedScene && updateLettering(selectedScene, { text: event.target.value })
+              selectedClip && updateLettering(selectedClip, { text: event.target.value })
             }
             placeholder="Digite o lettering desta cena"
             style={{ fontSize: 12, lineHeight: 1.5, resize: 'vertical', marginBottom: 12 }}
@@ -170,10 +242,10 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
               <select
                 id="video-lettering-position"
                 className="field"
-                value={selectedScene?.lettering.position ?? 'bottom'}
+                value={selectedClip?.lettering.position ?? 'bottom'}
                 onChange={(event) =>
-                  selectedScene &&
-                  updateLettering(selectedScene, {
+                  selectedClip &&
+                  updateLettering(selectedClip, {
                     position: event.target.value as SceneVideoLettering['position'],
                   })
                 }
@@ -191,10 +263,10 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
               <select
                 id="video-lettering-align"
                 className="field"
-                value={selectedScene?.lettering.align ?? 'left'}
+                value={selectedClip?.lettering.align ?? 'left'}
                 onChange={(event) =>
-                  selectedScene &&
-                  updateLettering(selectedScene, {
+                  selectedClip &&
+                  updateLettering(selectedClip, {
                     align: event.target.value as SceneVideoLettering['align'],
                   })
                 }
@@ -217,10 +289,10 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
           <select
             id="video-lettering-style"
             className="field"
-            value={selectedScene?.lettering.style ?? 'cinematic'}
+            value={selectedClip?.lettering.style ?? 'cinematic'}
             onChange={(event) =>
-              selectedScene &&
-              updateLettering(selectedScene, {
+              selectedClip &&
+              updateLettering(selectedClip, {
                 style: event.target.value as SceneVideoLettering['style'],
               })
             }
@@ -242,10 +314,10 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
                 min={28}
                 max={86}
                 step={2}
-                value={selectedScene?.lettering.fontSize ?? 52}
+                value={selectedClip?.lettering.fontSize ?? 52}
                 onChange={(event) =>
-                  selectedScene &&
-                  updateLettering(selectedScene, { fontSize: Number(event.target.value) })
+                  selectedClip &&
+                  updateLettering(selectedClip, { fontSize: Number(event.target.value) })
                 }
                 style={{ width: '100%' }}
               />
@@ -257,9 +329,9 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
               <input
                 id="video-lettering-color"
                 type="color"
-                value={selectedScene?.lettering.color ?? '#ffffff'}
+                value={selectedClip?.lettering.color ?? '#ffffff'}
                 onChange={(event) =>
-                  selectedScene && updateLettering(selectedScene, { color: event.target.value })
+                  selectedClip && updateLettering(selectedClip, { color: event.target.value })
                 }
                 style={{
                   width: '100%',
@@ -277,8 +349,8 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
             <button
               className="btn btn-ghost"
               onClick={() => {
-                if (!selectedScene) return;
-                onLetteringChange(selectedScene.id, undefined);
+                if (!selectedClip) return;
+                onLetteringChange(selectedClip.sceneId, undefined);
               }}
               style={{ flex: 1, fontSize: 11 }}
             >
@@ -288,6 +360,21 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
 
           <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 12 }}>
             Configuração do preview
+          </p>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setPreviewRevision(revision => revision + 1);
+              setSelectedClipId(null);
+            }}
+            style={{ width: '100%', justifyContent: 'center', fontSize: 12, marginBottom: 14 }}
+          >
+            Reiniciar preview
+          </button>
+          <p style={{ fontSize: 10, color: 'var(--text-4)', lineHeight: 1.45, margin: '-7px 0 14px' }}>
+            O preview atualiza automaticamente ao marcar imagens, regenerar uma cena ou editar o lettering.
           </p>
 
           <label className="panel-field-label" htmlFor="video-scene-duration">
@@ -339,10 +426,10 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ scenes, aspectRatio, onLetter
             <p>
               Timeline: {durationInFrames} frames a {FPS} fps
             </p>
-            {missingImages > 0 && (
+            {scenesWithoutSelectedImages > 0 && (
               <p style={{ color: '#FBBF24', marginTop: 8 }}>
-                {missingImages} cena{missingImages !== 1 ? 's' : ''} sem imagem não entra
-                {missingImages === 1 ? '' : 'm'} no preview.
+                {scenesWithoutSelectedImages} cena{scenesWithoutSelectedImages !== 1 ? 's' : ''} sem
+                imagem selecionada não entra{scenesWithoutSelectedImages === 1 ? '' : 'm'} no preview.
               </p>
             )}
           </div>

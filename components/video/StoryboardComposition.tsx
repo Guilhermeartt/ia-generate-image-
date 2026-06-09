@@ -3,7 +3,10 @@ import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig } from 
 import type { SceneVideoLettering, VideoLetteringPosition } from '@/types';
 
 export interface StoryboardVideoScene {
-  id: number;
+  id: string;
+  sceneId: number;
+  sourceId: string;
+  sourceLabel: string;
   imageUrl: string;
   title: string;
   location: string;

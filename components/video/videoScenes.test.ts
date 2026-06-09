@@ -23,7 +23,48 @@ describe('createVideoScenes', () => {
       scene(2, { imageUrl: 'data:image/png;base64,second' }),
     ]);
 
-    expect(result.map((item) => item.id)).toEqual([2, 3]);
+    expect(result.map((item) => item.sceneId)).toEqual([2, 3]);
+  });
+
+  it('uses the first generated split when a scene has no main image', () => {
+    const result = createVideoScenes([
+      scene(1, {
+        splitImages: [
+          { id: 'a', prompt: 'Plano aberto', imageUrl: 'data:image/png;base64,split' },
+        ],
+      }),
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].sourceId).toBe('split:a');
+    expect(result[0].imageUrl).toContain('split');
+  });
+
+  it('expands multiple selected sources in the requested order', () => {
+    const result = createVideoScenes([
+      scene(1, {
+        imageUrl: 'data:image/png;base64,main',
+        endFrameUrl: 'data:image/png;base64,end',
+        splitImages: [
+          { id: 'a', prompt: 'Plano aberto', imageUrl: 'data:image/png;base64,split-a' },
+          { id: 'b', prompt: 'Close', imageUrl: 'data:image/png;base64,split-b' },
+        ],
+        videoImageSourceIds: ['split:b', 'main', 'end'],
+      }),
+    ]);
+
+    expect(result.map(item => item.sourceId)).toEqual(['split:b', 'main', 'end']);
+  });
+
+  it('drops selected sources that no longer exist', () => {
+    const result = createVideoScenes([
+      scene(1, {
+        imageUrl: 'data:image/png;base64,main',
+        videoImageSourceIds: ['split:removed', 'main'],
+      }),
+    ]);
+
+    expect(result.map(item => item.sourceId)).toEqual(['main']);
   });
 
   it('limits long captions so they remain readable in the player', () => {

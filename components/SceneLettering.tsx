@@ -9,15 +9,14 @@ interface SceneLetteringProps {
 /**
  * Painel "Lettering indicado": exibe as notas de lettering da cena, permite
  * alternar se serão renderizadas na imagem e copiá-las. Extraído do SceneCard;
- * retorna null quando a cena não tem lettering.
+ * também deixa explícita a regra "sem texto" quando a cena não tem lettering.
  */
 const SceneLettering: React.FC<SceneLetteringProps> = ({ scene, onIncludeLetteringChange }) => {
   const [copied, setCopied] = useState(false);
   const letteringNotes = scene.lettering_notes ?? [];
 
-  if (letteringNotes.length === 0) return null;
-
-  const includeLettering = scene.includeLettering !== false;
+  const hasLettering = letteringNotes.length > 0;
+  const includeLettering = hasLettering && scene.includeLettering !== false;
 
   const handleCopy = async () => {
     const text = letteringNotes.join('\n');
@@ -50,7 +49,7 @@ const SceneLettering: React.FC<SceneLetteringProps> = ({ scene, onIncludeLetteri
         borderRadius: 8,
         background: includeLettering ? 'rgba(245,158,11,0.08)' : 'rgba(120,120,120,0.06)',
         border: `1px solid ${includeLettering ? 'rgba(245,158,11,0.22)' : 'var(--border)'}`,
-        opacity: includeLettering ? 1 : 0.72,
+        opacity: includeLettering ? 1 : 0.9,
         transition: 'background .15s, border-color .15s, opacity .15s',
       }}
     >
@@ -66,7 +65,7 @@ const SceneLettering: React.FC<SceneLetteringProps> = ({ scene, onIncludeLetteri
               margin: 0,
             }}
           >
-            Lettering indicado
+            Texto na imagem
           </p>
           {!includeLettering && (
             <span
@@ -82,11 +81,16 @@ const SceneLettering: React.FC<SceneLetteringProps> = ({ scene, onIncludeLetteri
                 border: '1px solid var(--border)',
               }}
             >
-              Removido da imagem
+              Sem lettering
             </span>
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {!hasLettering && (
+            <p style={{ fontSize: 11, color: 'var(--text-4)', lineHeight: 1.45 }}>
+              Nenhum texto deve aparecer na imagem, inclusive no frame final.
+            </p>
+          )}
           {letteringNotes.map((note, index) => {
             const isListItem = /^\s*(?:[•·*\-–—]|\d+[.)])\s+\S/.test(note);
             return (
@@ -111,11 +115,12 @@ const SceneLettering: React.FC<SceneLetteringProps> = ({ scene, onIncludeLetteri
           })}
         </div>
       </div>
-      {onIncludeLetteringChange && (
+      {hasLettering && onIncludeLetteringChange && (
         <button
           type="button"
           role="switch"
           aria-checked={includeLettering}
+          aria-label={includeLettering ? 'Remover lettering da imagem' : 'Incluir lettering na imagem'}
           onClick={() => onIncludeLetteringChange(scene.id, !includeLettering)}
           title={
             includeLettering
@@ -150,14 +155,16 @@ const SceneLettering: React.FC<SceneLetteringProps> = ({ scene, onIncludeLetteri
           />
         </button>
       )}
-      <button
-        onClick={handleCopy}
-        className="btn btn-ghost"
-        style={{ fontSize: 11, padding: '5px 8px', flexShrink: 0 }}
-        title="Copiar indicação de lettering"
-      >
-        {copied ? 'Copiado' : 'Copiar'}
-      </button>
+      {hasLettering && (
+        <button
+          onClick={handleCopy}
+          className="btn btn-ghost"
+          style={{ fontSize: 11, padding: '5px 8px', flexShrink: 0 }}
+          title="Copiar indicação de lettering"
+        >
+          {copied ? 'Copiado' : 'Copiar'}
+        </button>
+      )}
     </div>
   );
 };

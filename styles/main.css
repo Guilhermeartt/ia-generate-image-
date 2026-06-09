@@ -297,6 +297,33 @@
       .img-group:hover .img-overlay    { opacity: 1; }
       .img-group:hover img             { transform: scale(1.03); }
 
+      @media (max-width: 760px) {
+        .scene-card-root {
+          flex-direction: column !important;
+        }
+        .scene-card-image-panel {
+          width: 100% !important;
+          min-height: 220px;
+          border-right: none !important;
+          border-bottom: 1px solid var(--border);
+        }
+        .scene-end-frame-grid {
+          grid-template-columns: 1fr !important;
+        }
+        .scene-end-frame-arrow {
+          flex-direction: row !important;
+          justify-content: center;
+          padding: 2px 0;
+        }
+        .scene-end-frame-arrow svg {
+          transform: rotate(90deg);
+        }
+        .scene-checklist-row {
+          grid-template-columns: 12px 74px minmax(0, 1fr) !important;
+          gap: 5px !important;
+        }
+      }
+
       /* ── Reference badge hover ──────────────────────────────── */
       .img-ref-badge:hover .img-ref-tooltip {
         opacity: 1 !important;

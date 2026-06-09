@@ -254,6 +254,12 @@ export interface Scene {
   references?: SceneReference[];
   /** Configuração editável do lettering usado no vídeo do storyboard. */
   videoLettering?: SceneVideoLettering;
+  /**
+   * Fontes visuais incluídas no vídeo, na ordem escolhida.
+   * IDs possíveis: `main`, `split:<id>` e `end`.
+   * Ausente preserva o comportamento legado: usar apenas a imagem principal.
+   */
+  videoImageSourceIds?: string[];
 }
 
 // fix: Add SavedAnalysis interface definition.

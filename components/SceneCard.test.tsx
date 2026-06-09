@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import SceneCard from './SceneCard';
 import type { Scene, Character } from '../types';
@@ -20,8 +20,6 @@ const makeScene = (overrides: Partial<Scene> = {}): Scene => ({
   detected_characters: ['Maria'],
   ...overrides,
 });
-
-const noop = () => {};
 
 const makeProps = (scene: Scene, characters: Character[] = []) => ({
   scene,
@@ -82,12 +80,30 @@ describe('SceneCard (render)', () => {
   it('mostra o lettering indicado quando a cena tem notas', () => {
     const scene = makeScene({ lettering_notes: ['TÍTULO: O Reencontro'] });
     render(<SceneCard {...makeProps(scene)} />);
-    expect(screen.getByText(/Lettering indicado/i)).toBeInTheDocument();
+    expect(screen.getByText(/Texto na imagem/i)).toBeInTheDocument();
     expect(screen.getByText(/O Reencontro/i)).toBeInTheDocument();
   });
 
-  it('não mostra lettering quando a cena não tem notas', () => {
+  it('explicita a proibição de lettering quando a cena não tem notas', () => {
     render(<SceneCard {...makeProps(makeScene())} />);
-    expect(screen.queryByText(/Lettering indicado/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Sem lettering/i)).toBeInTheDocument();
+    expect(screen.getByText(/inclusive no frame final/i)).toBeInTheDocument();
+  });
+
+  it('mostra no checklist uma continuidade que aponta para a própria cena', () => {
+    const scene = makeScene({ isContinuation: true, continuationReferenceId: 1 });
+    render(<SceneCard {...makeProps(scene)} />);
+    fireEvent.click(screen.getByRole('button', { name: /Checklist de geração/i }));
+    expect(screen.getByText(/aponta para a própria cena/i)).toBeInTheDocument();
+  });
+
+  it('permite desligar uma continuidade inválida importada na primeira cena', () => {
+    const scene = makeScene({ isContinuation: true });
+    const props = makeProps(scene);
+    render(<SceneCard {...props} />);
+    const checkbox = screen.getByRole('checkbox', { name: /Continuação da cena anterior/i });
+    expect(checkbox).not.toBeDisabled();
+    fireEvent.click(checkbox);
+    expect(props.onContinuationChange).toHaveBeenCalledWith(scene.id, false);
   });
 });

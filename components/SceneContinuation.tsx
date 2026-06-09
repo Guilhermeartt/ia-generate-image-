@@ -33,15 +33,15 @@ const SceneContinuation: React.FC<SceneContinuationProps> = ({
           gap: 6,
           fontSize: 12,
           color: 'var(--text-3)',
-          cursor: sceneIndex === 0 ? 'not-allowed' : 'pointer',
-          opacity: sceneIndex === 0 || isBusy ? 0.5 : 1,
+          cursor: sceneIndex === 0 && !scene.isContinuation ? 'not-allowed' : 'pointer',
+          opacity: (sceneIndex === 0 && !scene.isContinuation) || isBusy ? 0.5 : 1,
         }}
       >
         <input
           type="checkbox"
           checked={!!scene.isContinuation}
           onChange={(e) => onContinuationChange(scene.id, e.target.checked)}
-          disabled={sceneIndex === 0 || isBusy}
+          disabled={(sceneIndex === 0 && !scene.isContinuation) || isBusy}
           style={{ width: 13, height: 13, accentColor: 'var(--indigo)', cursor: 'pointer' }}
         />
         Continuação da cena anterior
@@ -57,16 +57,25 @@ const SceneContinuation: React.FC<SceneContinuationProps> = ({
     {scene.isContinuation && (
       <div style={{ marginTop: 6, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label className="label" style={{ margin: 0, whiteSpace: 'nowrap' }}>
+          <label htmlFor={`scene-${scene.id}-continuation-reference`} className="label" style={{ margin: 0, whiteSpace: 'nowrap' }}>
             Ordem de referência:
           </label>
           <input
+            id={`scene-${scene.id}-continuation-reference`}
             type="number"
             value={scene.continuationReferenceId ?? ''}
             onChange={(e) => onContinuationReferenceChange(scene.id, e.target.value)}
             placeholder="Padrão: anterior"
             disabled={isBusy}
             min="1"
+            aria-invalid={!referenceSceneData.isValid}
+            aria-describedby={
+              !referenceSceneData.isValid
+                ? `scene-${scene.id}-continuation-error`
+                : referenceSceneData.isImageMissing
+                  ? `scene-${scene.id}-continuation-warning`
+                  : undefined
+            }
             className="field"
             style={{
               width: 120,
@@ -76,10 +85,12 @@ const SceneContinuation: React.FC<SceneContinuationProps> = ({
           />
         </div>
         {!referenceSceneData.isValid && (
-          <p style={{ fontSize: 11, color: 'var(--red)' }}>Cena de referência não encontrada.</p>
+          <p id={`scene-${scene.id}-continuation-error`} role="alert" style={{ fontSize: 11, color: 'var(--red)' }}>
+            Cena de referência inválida, não encontrada ou igual à cena atual.
+          </p>
         )}
         {referenceSceneData.isImageMissing && (
-          <p style={{ fontSize: 11, color: 'var(--amber)' }}>
+          <p id={`scene-${scene.id}-continuation-warning`} style={{ fontSize: 11, color: 'var(--amber)' }}>
             A imagem da cena ({referenceSceneData.identifier}) precisa ser gerada primeiro.
           </p>
         )}

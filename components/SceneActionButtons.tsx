@@ -36,13 +36,26 @@ const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
 }) => {
   const [isRemoveMenuOpen, setIsRemoveMenuOpen] = useState(false);
   const disabled = isBusy || scene.isUpdatingPrompt;
-  const cannotGenerate = !referenceSceneData.isValid || referenceSceneData.isImageMissing;
+  const cannotGenerate = !scene.image_prompt.trim() || !referenceSceneData.isValid || referenceSceneData.isImageMissing;
+  const generationBlockReason = !scene.image_prompt.trim()
+    ? 'Preencha o prompt da imagem antes de gerar.'
+    : !referenceSceneData.isValid
+      ? 'Corrija a ordem da cena de continuidade antes de gerar.'
+      : referenceSceneData.isImageMissing
+        ? 'Gere primeiro a imagem da cena usada como referência.'
+        : undefined;
 
   return (
     <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
       {scene.imageUrl ? (
         <>
-          <button onClick={onOpenRefPanel} disabled={disabled} className="btn btn-primary" style={{ fontSize: 12 }}>
+          <button
+            onClick={onOpenRefPanel}
+            disabled={disabled || cannotGenerate}
+            className="btn btn-primary"
+            style={{ fontSize: 12 }}
+            title={generationBlockReason ?? 'Regerar usando recorte, outra cena ou referências extras'}
+          >
             <CropIcon width={13} height={13} />
             Gerar Novamente
           </button>
@@ -61,15 +74,18 @@ const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
             disabled={disabled || cannotGenerate}
             className="btn btn-ghost"
             style={{ fontSize: 12 }}
-            title="Regerar sem modal de referência"
+            title={generationBlockReason ?? 'Regerar sem modal de referência'}
           >
             <ReloadIcon width={13} height={13} />
             Rápido
           </button>
           <div style={{ position: 'relative' }}>
             <button
+              type="button"
               onClick={() => setIsRemoveMenuOpen((open) => !open)}
               disabled={disabled}
+              aria-expanded={isRemoveMenuOpen}
+              aria-haspopup="menu"
               className="btn btn-ghost"
               style={{ fontSize: 12 }}
               title="Remover textos, logos, gráficos ou interfaces da imagem gerada"
@@ -83,6 +99,8 @@ const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
 
             {isRemoveMenuOpen && (
               <div
+                role="menu"
+                aria-label="Opções para remover elementos da imagem"
                 style={{
                   position: 'absolute',
                   right: 0,
@@ -103,6 +121,8 @@ const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
                   </p>
                 </div>
                 <button
+                  type="button"
+                  role="menuitem"
                   onClick={() => {
                     setIsRemoveMenuOpen(false);
                     onRemoveVisualElements(REMOVE_ALL_VISUAL_PROMPT);
@@ -124,6 +144,8 @@ const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
                 </button>
                 {REMOVE_VISUAL_OPTIONS.map((option) => (
                   <button
+                    type="button"
+                    role="menuitem"
                     key={option.id}
                     onClick={() => {
                       setIsRemoveMenuOpen(false);
@@ -157,6 +179,7 @@ const SceneActionButtons: React.FC<SceneActionButtonsProps> = ({
             disabled={cannotGenerate}
             className="btn btn-primary"
             style={{ fontSize: 12 }}
+            title={generationBlockReason ?? 'Gerar a visualização da cena'}
           >
             <SparklesIcon width={13} height={13} />
             Gerar Visualização

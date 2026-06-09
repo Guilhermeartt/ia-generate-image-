@@ -2026,6 +2026,13 @@ REGRAS ESTRITAS:
                         ),
                       )
                     }
+                    onImageSourcesChange={(sceneId, videoImageSourceIds) =>
+                      setScenes((current) =>
+                        current.map((scene) =>
+                          scene.id === sceneId ? { ...scene, videoImageSourceIds } : scene,
+                        ),
+                      )
+                    }
                   />
                 </Suspense>
               )}

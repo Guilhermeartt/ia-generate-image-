@@ -74,7 +74,7 @@ const buildSceneReferenceInstruction = (refs: SceneReference[]): string => {
 import { generateSceneImage, generateImage, generateSplitPrompts, analyzeScene, editImage, recreateScenePrompt } from '../services/geminiService';
 import { applyPromptStyle, buildSceneAnalysisStyleInstruction } from '../utils/stylePrompt';
 import { updateSceneCameraModuleOnly, updateSceneCameraPositionModuleOnly, updateSceneVisualStyleModuleOnly, type CameraHeightId, type CameraPositionId } from '../utils/promptModules';
-import { normalizePromptJson, serializeImagePrompt } from '../utils/promptCoherence';
+import { applyVisibleTextPolicy, normalizePromptJson, serializeImagePrompt } from '../utils/promptCoherence';
 
 type SceneCharacterEdit =
   | { type: 'add'; name: string }
@@ -179,7 +179,11 @@ export function useScenes({
           return { name: char.name, base64Data, mimeType: char.imageMimeType! };
         });
 
-      const prompt = applyPromptStyle(targetScene.image_prompt, targetScene.sceneGraphicStyle);
+      const prompt = applyVisibleTextPolicy(
+        applyPromptStyle(targetScene.image_prompt, targetScene.sceneGraphicStyle),
+        targetScene.includeLettering,
+        targetScene.lettering_notes,
+      );
       const activeSceneRefs = (targetScene.references ?? []).filter(r => r.enabled !== false);
       const sceneExtraReferences = activeSceneRefs.map(r => ({
         base64Data: r.base64Data,
@@ -312,7 +316,11 @@ export function useScenes({
       );
 
       try {
-        const prompt = scene.end_frame_prompt;
+        const prompt = applyVisibleTextPolicy(
+          applyPromptStyle(scene.end_frame_prompt, scene.sceneGraphicStyle),
+          scene.includeLettering,
+          scene.lettering_notes,
+        );
 
         let base64Data: string;
         let mimeType: string;
@@ -321,7 +329,7 @@ export function useScenes({
 
         if (scene.imageUrl) {
           // Use edit-image so the end frame is a visual continuation of the start frame
-          const editPrompt = `Mantenha o mesmo cenário, personagens, iluminação e estilo visual do frame de referência. Avance a ação para o momento descrito: ${prompt}`;
+          const editPrompt = `Mantenha o mesmo cenário, personagens, identidades, figurinos, iluminação, câmera e estilo visual do frame de referência. Preserve a composição sempre que possível e avance apenas a ação para o momento descrito. Não copie texto acidental do frame de referência.\n\n${prompt}`;
           const result = await editImage(scene.imageUrl, editPrompt, generalContext);
           base64Data = result.base64Data;
           mimeType = result.mimeType;
@@ -435,7 +443,7 @@ export function useScenes({
               ? 'gemini-3.1-flash-image-preview'
               : 'gemini-2.5-flash-image';
           const result = await generateSceneImage(
-            overridePrompt, characterReferences, aspectRatio,
+            applyVisibleTextPolicy(overridePrompt, originalScene.includeLettering, originalScene.lettering_notes), characterReferences, aspectRatio,
             generalContext, sceneReference, modelToUse, resolution,
             mergedExtraReferences, mergedBlendInstruction
           );
@@ -445,7 +453,7 @@ export function useScenes({
           costBRL = result.costBRL;
         } else {
           const result = await generateImage(
-            overridePrompt, imageModel, aspectRatio, numberOfImages, generalContext, resolution
+            applyVisibleTextPolicy(overridePrompt, originalScene.includeLettering, originalScene.lettering_notes), imageModel, aspectRatio, numberOfImages, generalContext, resolution
           );
           base64Data = result.base64Data;
           mimeType = result.mimeType;
