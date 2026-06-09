@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
-import type { Character, Scene, CsvRow, StoryboardRow, ImageModel, SavedAnalysis, AppSettings, ProjectState, TextAnalysisResult, AnalysisModalState, ImageRegion, RegionActionResult, GenerationSettings, SettingsPreset, TextCostEntry, TextError, BoundingBox } from './types';
+import type { Character, Scene, CsvRow, StoryboardRow, ImageModel, AppSettings, ProjectState, TextAnalysisResult, AnalysisModalState, ImageRegion, RegionActionResult, TextError, BoundingBox } from './types';
 import Loader from './components/Loader';
 import CharacterCard from './components/CharacterCard';
 import SceneCard from './components/SceneCard';
@@ -22,7 +22,6 @@ import {
   editImage,
   analyzeImageText,
   refineScene,
-  registerCostEmitter,
   convertScriptToScenes,
   structureStoryboard,
   analyzeStoryboardScene,
@@ -54,6 +53,9 @@ import { useActionLog } from './hooks/useActionLog';
 import { useToast } from './hooks/useToast';
 import { useTheme } from './hooks/useTheme';
 import { useCurrentUser } from './hooks/useCurrentUser';
+import { useAnalysisHistory } from './hooks/useAnalysisHistory';
+import { usePresets } from './hooks/usePresets';
+import { useTextCosts } from './hooks/useTextCosts';
 import { applyPromptStyle, buildSceneAnalysisStyleInstruction } from './utils/stylePrompt';
 import { SHOT_TYPE_OPTIONS } from './utils/promptModules';
 import { normalizePromptJson, serializeImagePrompt, extractLetteringFromScript } from './utils/promptCoherence';
@@ -88,9 +90,6 @@ type ProcessingState =
   | 'error';
   
 declare const JSZip: any;
-
-const HISTORY_KEY = 'scriptVisualizerHistory';
-const PRESETS_KEY = 'generationSettingsPresets';
 
 const PREDEFINED_STYLES = [...SHOT_TYPE_OPTIONS];
 
@@ -149,7 +148,7 @@ const App: React.FC = () => {
   const [resolution, setResolution] = useState<'1K' | '2K' | '4K'>('1K');
   const [numberOfImages, setNumberOfImages] = useState<number>(1);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-  const [history, setHistory] = useState<SavedAnalysis[]>([]);
+  const { history, addToHistory, clearHistory } = useAnalysisHistory();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { settings, saveSettings, isLoaded } = useSettings();
   const projectInputRef = useRef<HTMLInputElement>(null);
@@ -157,12 +156,27 @@ const App: React.FC = () => {
   const [analysisModalState, setAnalysisModalState] = useState<AnalysisModalState | null>(null);
   const [availableStyles, setAvailableStyles] = useState<string[]>([]);
   const [regionSelectorState, setRegionSelectorState] = useState<{ item: Character | Scene; initialMode?: 'analyze' | 'edit' | 'remove' } | null>(null);
-  const [presets, setPresets] = useState<SettingsPreset[]>([]);
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('custom');
+  const {
+    presets,
+    selectedPresetId,
+    setSelectedPresetId,
+    savePreset: handleSavePreset,
+    deletePreset: handleDeletePreset,
+    selectPreset,
+  } = usePresets({
+    currentSettings: { imageModel, characterImageModel, aspectRatio, numberOfImages, resolution },
+    applySettings: (s) => {
+      setImageModel(s.imageModel);
+      setCharacterImageModel(s.characterImageModel);
+      setAspectRatio(s.aspectRatio);
+      setNumberOfImages(s.numberOfImages);
+      setResolution(s.resolution || '1K');
+    },
+  });
   const [activeView, setActiveView] = useState<ActiveView>('characters');
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [isGalleryEditing, setIsGalleryEditing] = useState(false);
-  const [textCosts, setTextCosts] = useState<TextCostEntry[]>([]);
+  const { textCosts, resetTextCosts, totalCostBRL } = useTextCosts();
   const [showRightPanel, setShowRightPanel] = useState(true);
   const { theme, setTheme } = useTheme();
   const { currentUser, setCurrentUser, hasServerPlatformKey, platformProvider } = useCurrentUser();
@@ -277,7 +291,7 @@ const App: React.FC = () => {
     setError(null);
     setAvailableStyles([]);
     setActiveView('characters');
-    setTextCosts([]);
+    resetTextCosts();
     setCloudProjectId(null);
     setShowAnalysisReport(false);
     setGlobalStyle(null);
@@ -431,25 +445,7 @@ const App: React.FC = () => {
   }, [error, actionLog]);
 
   useEffect(() => {
-    try {
-        const savedHistory = localStorage.getItem(HISTORY_KEY);
-        if (savedHistory) {
-            setHistory(JSON.parse(savedHistory));
-        }
-    } catch (e) {
-        console.error("Failed to load history from localStorage", e);
-        localStorage.removeItem(HISTORY_KEY);
-    }
-
-    try {
-        const savedPresets = localStorage.getItem(PRESETS_KEY);
-        if (savedPresets) {
-            setPresets(JSON.parse(savedPresets));
-        }
-    } catch(e) {
-        console.error("Failed to load presets from localStorage", e);
-    }
-
+    // (histórico e presets carregados pelos hooks useAnalysisHistory/usePresets)
     // (tema aplicado pelo hook useTheme)
 
     // Garante que o cookie CSRF está disponível antes de qualquer POST.
@@ -465,19 +461,8 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handleAdminShortcut);
     const cleanupShortcut = () => window.removeEventListener('keydown', handleAdminShortcut);
 
-    // Register cost emitter so every Gemini API text call is tracked
-    registerCostEmitter(({ operation, model, inputTokens, outputTokens, costBRL }) => {
-      setTextCosts(prev => [...prev, {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        operation,
-        model,
-        inputTokens,
-        outputTokens,
-        costBRL,
-        timestamp: Date.now(),
-      }]);
-    });
-    // (usuário e status do provedor são inicializados pelo hook useCurrentUser)
+    // (custos de texto rastreados pelo hook useTextCosts;
+    //  usuário e status do provedor pelo hook useCurrentUser)
 
     return cleanupShortcut;
   }, []);
@@ -906,22 +891,12 @@ const App: React.FC = () => {
       setProcessingMessage('');
       setShowAnalysisReport(true);
 
-      const newAnalysis: SavedAnalysis = {
+      addToHistory({
         timestamp: Date.now(),
         fileName: file.name,
         generalContext: context,
         characters: charsWithOrigin,
         scenes: refinedScenes,
-      };
-
-      setHistory(prevHistory => {
-          const updatedHistory = [newAnalysis, ...prevHistory].slice(0, 2);
-          try {
-              localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
-          } catch(e) {
-              console.error("Failed to save history to localStorage", e);
-          }
-          return updatedHistory;
       });
 
     } catch (e: any) {
@@ -1079,17 +1054,12 @@ const App: React.FC = () => {
       setShowAnalysisReport(true);
 
       const fileName = file?.name || 'roteiro';
-      const newAnalysis: SavedAnalysis = {
+      addToHistory({
         timestamp: Date.now(),
         fileName,
         generalContext: context,
         characters: charsWithOrigin,
         scenes: refinedScenes,
-      };
-      setHistory(prevHistory => {
-        const updatedHistory = [newAnalysis, ...prevHistory].slice(0, 2);
-        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory)); } catch {}
-        return updatedHistory;
       });
     } catch (e: any) {
       console.error(e);
@@ -1190,14 +1160,7 @@ const App: React.FC = () => {
     }
   }, [history]);
 
-  const handleClearHistory = useCallback(() => {
-    try {
-        localStorage.removeItem(HISTORY_KEY);
-        setHistory([]);
-    } catch (e) {
-        console.error("Failed to clear history from localStorage", e);
-    }
-  }, []);
+  const handleClearHistory = clearHistory;
 
   const handleSaveSettings = useCallback((newSettings: AppSettings) => {
     saveSettings(newSettings);
@@ -1563,59 +1526,9 @@ REGRAS ESTRITAS:
     }
   }, [handleEditImageWrapper, handleCharacterImageUpdate, handleSceneImageUpdate]);
 
-  const savePresetsToStorage = (newPresets: SettingsPreset[]) => {
-    try {
-        localStorage.setItem(PRESETS_KEY, JSON.stringify(newPresets));
-    } catch(e) {
-        console.error("Failed to save presets to localStorage", e);
-    }
-  };
-
-  const handleSavePreset = useCallback(() => {
-    const name = prompt("Digite um nome para o preset:");
-    if (name) {
-        const currentSettings: GenerationSettings = {
-            imageModel,
-            characterImageModel,
-            aspectRatio,
-            numberOfImages,
-            resolution
-        };
-        const newPreset: SettingsPreset = {
-            id: Date.now().toString(),
-            name,
-            settings: currentSettings,
-        };
-        const updatedPresets = [...presets, newPreset];
-        setPresets(updatedPresets);
-        savePresetsToStorage(updatedPresets);
-        setSelectedPresetId(newPreset.id);
-    }
-  }, [imageModel, characterImageModel, aspectRatio, numberOfImages, resolution, presets]);
-
-  const handleDeletePreset = useCallback(() => {
-    if (selectedPresetId !== 'custom' && window.confirm("Tem certeza que deseja excluir este preset?")) {
-        const updatedPresets = presets.filter(p => p.id !== selectedPresetId);
-        setPresets(updatedPresets);
-        savePresetsToStorage(updatedPresets);
-        setSelectedPresetId('custom');
-    }
-  }, [selectedPresetId, presets]);
-
   const handlePresetChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const presetId = e.target.value;
-    setSelectedPresetId(presetId);
-    if (presetId !== 'custom') {
-        const preset = presets.find(p => p.id === presetId);
-        if (preset) {
-            setImageModel(preset.settings.imageModel);
-            setCharacterImageModel(preset.settings.characterImageModel);
-            setAspectRatio(preset.settings.aspectRatio);
-            setNumberOfImages(preset.settings.numberOfImages);
-            setResolution(preset.settings.resolution || '1K');
-        }
-    }
-  }, [presets]);
+    selectPreset(e.target.value);
+  }, [selectPreset]);
 
   // useTheme já persiste em localStorage e reflete no atributo data-theme.
   const handleToggleTheme = setTheme;
@@ -2117,7 +2030,7 @@ REGRAS ESTRITAS:
               </div>
               <div className="summary-tile">
                 <span>Custo texto</span>
-                <strong>R$ {textCosts.reduce((sum, item) => sum + item.costBRL, 0).toFixed(2).replace('.', ',')}</strong>
+                <strong>R$ {totalCostBRL.toFixed(2).replace('.', ',')}</strong>
               </div>
               <button
                 onClick={() => setShowAnalysisReport(true)}
