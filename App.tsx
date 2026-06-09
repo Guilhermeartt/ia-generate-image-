@@ -62,6 +62,7 @@ import { normalizePromptJson, serializeImagePrompt, extractLetteringFromScript }
 import { parseCSV, rowsToCsvText, storyboardRowsToCsvRows } from './utils/csv';
 import { isDocxFile, extractTextFromDocx } from './utils/docx';
 import { computeCharacterOrigins } from './utils/characterOrigins';
+import { extractNumberFromString, stripLetteringFromDescription } from './utils/sceneText';
 import {
   clearAuthToken,
   type CurrentUser,
@@ -516,15 +517,6 @@ const App: React.FC = () => {
       setProcessingState('scenes');
       setProcessingMessage('Analisando cenas e criando prompts de imagem...');
       
-      const extractNumberFromString = (value: string): number => {
-        if (!value) return NaN;
-        const match = value.match(/\d+/);
-        if (match) {
-          return parseInt(match[0], 10);
-        }
-        return NaN;
-      };
-
       const analyzeContinuity = (contextText: string): { isContinuation: boolean; referenceId: number | null } => {
           if (!contextText || contextText.trim() === '') {
             return { isContinuation: false, referenceId: null };
@@ -572,18 +564,6 @@ const App: React.FC = () => {
 
       // Strip "LETTERING: ..." segments from a description so the lettering text
       // does not appear duplicated in the description AND in the lettering panel.
-      const stripLetteringFromDescription = (text: string): string => {
-        if (!text) return '';
-        return text
-          // Remove "LETTERING: ..." until end-of-line OR end-of-string (greedy line consume)
-          .replace(/\s*LETTERING\s*:\s*[^\n]*/gi, '')
-          // Collapse any orphan punctuation/whitespace left at line breaks
-          .replace(/[ \t]+\n/g, '\n')
-          .replace(/\n{3,}/g, '\n\n')
-          .replace(/\s+\.\s*$/, '.')
-          .trim();
-      };
-
       // Pre-validate all rows before hitting the API
       const validatedRows = csvData.map((row, index) => {
         const scene_id = extractNumberFromString(row.scene_id);
@@ -762,18 +742,6 @@ const App: React.FC = () => {
 
       setProcessingState('scenes');
       setProcessingMessage('Analisando cenas e criando prompts de imagem...');
-
-      const stripLetteringFromDescription = (text: string): string => {
-        if (!text) return '';
-        return text
-          // Remove "LETTERING: ..." until end-of-line OR end-of-string (greedy line consume)
-          .replace(/\s*LETTERING\s*:\s*[^\n]*/gi, '')
-          // Collapse any orphan punctuation/whitespace left at line breaks
-          .replace(/[ \t]+\n/g, '\n')
-          .replace(/\n{3,}/g, '\n\n')
-          .replace(/\s+\.\s*$/, '.')
-          .trim();
-      };
 
       const CONCURRENCY = 5;
       const processedSceneResults: Scene[] = new Array(storyboardRows.length);
