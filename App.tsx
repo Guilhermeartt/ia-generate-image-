@@ -23,7 +23,6 @@ import {
   analyzeImageText,
   refineScene,
   registerCostEmitter,
-  registerUserEmitter,
   convertScriptToScenes,
   structureStoryboard,
   analyzeStoryboardScene,
@@ -35,7 +34,6 @@ import type { ProjectImageItem } from './components/ProjectGalleryModal';
 const ProjectGalleryModal = lazy(() => import('./components/ProjectGalleryModal'));
 const CostReportView = lazy(() => import('./components/CostReportView'));
 import { getStoredApiKey } from './services/geminiService';
-import { getGeminiServerStatus, type PlatformProvider } from './services/geminiService';
 import AuthModal from './components/AuthModal';
 import AccountModal from './components/AccountModal';
 const ScriptPasteModal = lazy(() => import('./components/ScriptPasteModal'));
@@ -55,12 +53,12 @@ import ActionLog from './components/ActionLog';
 import { useActionLog } from './hooks/useActionLog';
 import { useToast } from './hooks/useToast';
 import { useTheme } from './hooks/useTheme';
+import { useCurrentUser } from './hooks/useCurrentUser';
 import { applyPromptStyle, buildSceneAnalysisStyleInstruction } from './utils/stylePrompt';
 import { SHOT_TYPE_OPTIONS } from './utils/promptModules';
 import { normalizePromptJson, serializeImagePrompt, extractLetteringFromScript } from './utils/promptCoherence';
 import {
   clearAuthToken,
-  getCurrentUser,
   type CurrentUser,
 } from './services/saasService';
 import { primeCsrfCookie } from './services/httpClient';
@@ -167,9 +165,7 @@ const App: React.FC = () => {
   const [textCosts, setTextCosts] = useState<TextCostEntry[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const { theme, setTheme } = useTheme();
-  const [hasServerPlatformKey, setHasServerPlatformKey] = useState(false);
-  const [platformProvider, setPlatformProvider] = useState<PlatformProvider>(null);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const { currentUser, setCurrentUser, hasServerPlatformKey, platformProvider } = useCurrentUser();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isScriptPasteOpen, setIsScriptPasteOpen] = useState(false);
@@ -481,22 +477,7 @@ const App: React.FC = () => {
         timestamp: Date.now(),
       }]);
     });
-    registerUserEmitter(user => setCurrentUser(user));
-
-    getGeminiServerStatus()
-      .then(status => {
-        setHasServerPlatformKey(status.hasPlatformKey);
-        setPlatformProvider(status.platformProvider ?? null);
-        if (status.user) setCurrentUser(status.user as CurrentUser);
-      })
-      .catch(() => {
-        setHasServerPlatformKey(false);
-        setPlatformProvider(null);
-      });
-
-    getCurrentUser().then(user => {
-      if (user) setCurrentUser(user);
-    });
+    // (usuário e status do provedor são inicializados pelo hook useCurrentUser)
 
     return cleanupShortcut;
   }, []);
