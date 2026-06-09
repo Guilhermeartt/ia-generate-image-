@@ -20,6 +20,7 @@ import ImgBtn from './ui/ImgBtn';
 import SceneCharacterTags from './SceneCharacterTags';
 import SceneLettering from './SceneLettering';
 import SceneContinuation from './SceneContinuation';
+import SceneSplitSuggestion from './SceneSplitSuggestion';
 import {
   REF_QUICK_PROMPTS,
   REF_BLEND_SUGGESTIONS,
@@ -702,34 +703,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
           <SceneLettering scene={scene} onIncludeLetteringChange={onIncludeLetteringChange} />
 
           {/* ── Split suggestion ── */}
-          {scene.suggests_split && (
-            <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: 8,
-              padding: '9px 10px', marginBottom: 10,
-              borderRadius: 8,
-              background: 'rgba(245,158,11,0.07)',
-              border: '1px solid rgba(245,158,11,0.22)',
-            }}>
-              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
-                <rect x="2" y="3" width="9" height="18" rx="1"/><rect x="13" y="3" width="9" height="18" rx="1"/>
-              </svg>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 10, fontWeight: 800, color: '#FCD34D', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>
-                  Subcena recomendada
-                </p>
-                {scene.split_reason && (
-                  <p style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.45 }}>{scene.split_reason}</p>
-                )}
-              </div>
-              <button
-                onClick={() => setIsSplitModalOpen(true)}
-                className="btn btn-ghost"
-                style={{ fontSize: 11, padding: '4px 8px', color: '#F59E0B', borderColor: 'rgba(245,158,11,0.30)', flexShrink: 0 }}
-              >
-                Dividir
-              </button>
-            </div>
-          )}
+          <SceneSplitSuggestion scene={scene} onOpenSplit={() => setIsSplitModalOpen(true)} />
 
           {/* ── Continuation ── */}
           <SceneContinuation
