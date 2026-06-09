@@ -91,25 +91,31 @@ npm run typecheck    # tsc --noEmit
 npm run build        # build de produção
 ```
 
-## Dívida técnica conhecida (priorizada)
+## Dívida técnica
 
-1. **`App.tsx` (2.715 linhas, 44 useState)** — quebrar em contexts
-   (auth, projeto, settings) + mover handlers para hooks. É a maior dívida.
-2. **`SceneCard.tsx` (2.340 linhas)** — decompor em subcomponentes.
-3. **Reorganização de `components/` em features/** — fazer JUNTO de (1) e (2),
-   pois a quebra realoca os arquivos naturalmente (evita churn duplo).
-4. **TypeScript strict completo** — hoje parcial (`noImplicitReturns` etc.);
+### Resolvida ✅
+- **`SceneCard.tsx`: 2.340 → 1.120 linhas (−52%)** — decomposto em
+  `SceneActionButtons`, `SceneSplitGrid`, `SceneReferencePanel`,
+  `SceneCharacterTags`, `SceneLettering`, `SceneContinuation`,
+  `SceneSplitSuggestion` + helpers (`utils/imageHelpers`),
+  primitivos (`ui/Spinner`, `ui/ImgBtn`) e constantes. Com rede de testes
+  de render (`SceneCard.test.tsx`).
+- **`App.tsx`: 2.715 → 2.466 linhas** — concerns extraídos para hooks
+  (`useToast`, `useTheme`, `useCurrentUser`, `useAnalysisHistory`,
+  `usePresets`, `useTextCosts`) e utils puros (`csv`, `docx`).
+
+### Pendente (priorizada)
+1. **`App.tsx` ainda em 2.466 linhas** — o fluxo de análise (`handleAnalyze`)
+   e os handlers de imagem orquestram vários hooks; extração exige lift de
+   estado. Menor prioridade agora que está sob controle.
+2. **TypeScript strict completo** — hoje parcial (`noImplicitReturns` etc.);
    `strictNullChecks`/`noImplicitAny` exigem esforço dedicado (~5k erros).
-5. **Rate limiter persistente** — hoje in-memory (ok para 1 instância).
-6. **SQLite → Postgres** — quando precisar escalar horizontalmente.
+3. **Rate limiter persistente** — hoje in-memory (ok para 1 instância).
+4. **SQLite → Postgres** — quando precisar escalar horizontalmente.
 
-## Estrutura-alvo de `components/` (a aplicar na refatoração de App.tsx)
+## Estrutura de `components/`
 
-```
-components/
-├── ui/           # primitivos: Loader, Toast, BatchProgressBar, icons, CreditAlert…
-├── storyboard/   # SceneCard, CharacterCard, SceneTableView, *ReviewView, *ReportView
-├── editor/       # ImageRegionSelectorModal, StyleSelectionModal, *ReferenceModal
-├── modals/       # ScriptPasteModal, ProjectGalleryModal, TextAnalysisModal…
-└── account/      # AuthModal, AccountModal, SettingsModal, AdminPanel
-```
+A pasta `ui/` foi iniciada (primitivos sem estado). Sub-componentes de cena
+ficam colocados (`Scene*.tsx`). Uma reorganização completa em features/
+(storyboard, editor, account…) pode ser feita quando conveniente — agora é
+churn de imports, não pré-requisito.
