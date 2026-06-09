@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
-import type { Character, Scene, SceneRefinement, SceneReference, SceneReferenceKind } from '../types';
-import { EditIcon, SparklesIcon, DownloadIcon, RevertIcon, TextAnalysisIcon, ReloadIcon, CropIcon } from './icons';
+import type { Character, Scene, SceneReference } from '../types';
+import { EditIcon, SparklesIcon, DownloadIcon, RevertIcon, TextAnalysisIcon, CropIcon } from './icons';
 import ImageLoader from './ImageLoader';
 import ImageEditModal from './ImageEditModal';
 import SceneReferencesPanel from './SceneReferencesPanel';
@@ -21,12 +21,11 @@ import SceneCharacterTags from './SceneCharacterTags';
 import SceneLettering from './SceneLettering';
 import SceneContinuation from './SceneContinuation';
 import SceneSplitSuggestion from './SceneSplitSuggestion';
+import SceneActionButtons from './SceneActionButtons';
 import {
   REF_QUICK_PROMPTS,
   REF_BLEND_SUGGESTIONS,
   CREATIVE_DIRECTION_SUGGESTIONS,
-  REMOVE_VISUAL_OPTIONS,
-  REMOVE_ALL_VISUAL_PROMPT,
 } from './sceneCard.constants';
 
 type RefExtra = { id: string; previewUrl: string; base64Data: string; mimeType: string };
@@ -88,7 +87,6 @@ const SceneCard: React.FC<SceneCardProps> = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editState, setEditState]             = useState<{ isLoading: boolean; error: string | null }>({ isLoading: false, error: null });
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
-  const [isRemoveMenuOpen, setIsRemoveMenuOpen] = useState(false);
   const [showRefinement, setShowRefinement]     = useState(false);
   const [hoveredSplitIdx, setHoveredSplitIdx]   = useState<number | null>(null);
   const [isCameraControlOpen, setIsCameraControlOpen] = useState(false);
@@ -200,7 +198,6 @@ const SceneCard: React.FC<SceneCardProps> = ({
 
   const handleRemoveVisualElements = async (instruction: string) => {
     if (!scene.imageUrl) return;
-    setIsRemoveMenuOpen(false);
     setEditState({ isLoading: true, error: null });
     try {
       const prompt = `${instruction} Preserve a cena, personagens, enquadramento, iluminação, estilo visual, cores, profundidade e atmosfera. Preencha a área removida de forma natural, fotorrealista e coerente com o ambiente. Não adicione novos textos, logos, gráficos, interfaces ou elementos editoriais.`;
@@ -969,145 +966,17 @@ const SceneCard: React.FC<SceneCardProps> = ({
           </div>
 
           {/* ── Action buttons ── */}
-          <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-            {scene.imageUrl ? (
-              <>
-                <button
-                  onClick={openRefPanel}
-                  disabled={isBusy || scene.isUpdatingPrompt}
-                  className="btn btn-primary"
-                  style={{ fontSize: 12 }}
-                >
-                  <CropIcon width={13} height={13} />
-                  Gerar Novamente
-                </button>
-                <button
-                  onClick={() => onEditRegion(scene)}
-                  disabled={isBusy || scene.isUpdatingPrompt}
-                  className="btn btn-ghost"
-                  style={{ fontSize: 12, color: '#818CF8', borderColor: 'rgba(129,140,248,0.35)' }}
-                  title="Selecionar uma região e editar apenas ela"
-                >
-                  <EditIcon width={13} height={13} />
-                  Editar Região
-                </button>
-                <button
-                  onClick={() => onVisualize(scene.id)}
-                  disabled={isBusy || scene.isUpdatingPrompt || !referenceSceneData.isValid || referenceSceneData.isImageMissing}
-                  className="btn btn-ghost"
-                  style={{ fontSize: 12 }}
-                  title="Regerar sem modal de referência"
-                >
-                  <ReloadIcon width={13} height={13} />
-                  Rápido
-                </button>
-                <div style={{ position: 'relative' }}>
-                  <button
-                    onClick={() => setIsRemoveMenuOpen(open => !open)}
-                    disabled={isBusy || scene.isUpdatingPrompt}
-                    className="btn btn-ghost"
-                    style={{ fontSize: 12 }}
-                    title="Remover textos, logos, gráficos ou interfaces da imagem gerada"
-                  >
-                    <EditIcon width={13} height={13} />
-                    Remover
-                    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </button>
-
-                  {isRemoveMenuOpen && (
-                    <div style={{
-                      position: 'absolute',
-                      right: 0,
-                      bottom: 'calc(100% + 6px)',
-                      width: 270,
-                      zIndex: 30,
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border-md)',
-                      borderRadius: 9,
-                      boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
-                      overflow: 'hidden',
-                    }}>
-                      <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--border)' }}>
-                        <p style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-1)' }}>Remover da imagem</p>
-                        <p style={{ fontSize: 11, color: 'var(--text-4)', lineHeight: 1.45, marginTop: 2 }}>Edita a imagem atual preservando a cena.</p>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveVisualElements(REMOVE_ALL_VISUAL_PROMPT)}
-                        style={{
-                          width: '100%', padding: '9px 10px', textAlign: 'left',
-                          background: 'var(--indigo-s)', border: 'none', borderBottom: '1px solid var(--border)',
-                          cursor: 'pointer', color: '#A5B4FC', fontSize: 12, fontWeight: 800,
-                        }}
-                      >
-                        Remover todos os elementos proibidos
-                      </button>
-                      {REMOVE_VISUAL_OPTIONS.map(option => (
-                        <button
-                          key={option.id}
-                          onClick={() => handleRemoveVisualElements(option.prompt)}
-                          style={{
-                            width: '100%', padding: '8px 10px', textAlign: 'left',
-                            background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)',
-                            cursor: 'pointer', color: 'var(--text-2)', fontSize: 12,
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : !scene.isLoading && (
-              <button
-                onClick={() => onVisualize(scene.id)}
-                disabled={!referenceSceneData.isValid || referenceSceneData.isImageMissing}
-                className="btn btn-primary"
-                style={{ fontSize: 12 }}
-              >
-                <SparklesIcon width={13} height={13} />
-                Gerar Visualização
-              </button>
-            )}
-
-            {/* Dividir */}
-            <button
-              onClick={() => setIsSplitModalOpen(true)}
-              disabled={isBusy || scene.isUpdatingPrompt || scene.isSplitting}
-              className="btn btn-ghost"
-              style={{ fontSize: 12, marginLeft: scene.imageUrl ? 0 : 'auto' }}
-              title="Dividir em múltiplos planos"
-            >
-              {scene.isSplitting ? <Spinner size={12} /> : (
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="3" width="9" height="18" rx="1"/><rect x="13" y="3" width="9" height="18" rx="1"/>
-                </svg>
-              )}
-              {scene.isSplitting ? 'Dividindo…' : 'Dividir'}
-            </button>
-
-            {/* Frame final para vídeo */}
-            {onGenerateEndFrame && scene.end_frame_prompt && (
-              <button
-                onClick={() => onGenerateEndFrame(scene.id)}
-                disabled={isBusy || scene.isUpdatingPrompt || scene.endFrameIsLoading}
-                className="btn btn-ghost"
-                style={{ fontSize: 12, color: '#34D399', borderColor: 'rgba(52,211,153,0.30)' }}
-                title="Gerar frame final para uso em ferramentas de vídeo (Runway, Kling, Pika)"
-              >
-                {scene.endFrameIsLoading ? <Spinner size={12} /> : (
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
-                )}
-                {scene.endFrameIsLoading ? 'Gerando…' : scene.endFrameUrl ? 'Reger frame final' : 'Frame final'}
-              </button>
-            )}
-          </div>
+          <SceneActionButtons
+            scene={scene}
+            isBusy={isBusy}
+            referenceSceneData={referenceSceneData}
+            onOpenRefPanel={openRefPanel}
+            onEditRegion={() => onEditRegion(scene)}
+            onVisualize={() => onVisualize(scene.id)}
+            onRemoveVisualElements={handleRemoveVisualElements}
+            onOpenSplit={() => setIsSplitModalOpen(true)}
+            onGenerateEndFrame={onGenerateEndFrame ? () => onGenerateEndFrame(scene.id) : undefined}
+          />
         </div>
       </div>
 
