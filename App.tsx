@@ -49,10 +49,12 @@ import FlowStepper from './components/FlowStepper';
 import ProjectStartCard from './components/ProjectStartCard';
 import ScriptPreviewShowcase from './components/ScriptPreviewShowcase';
 import PricingNotice from './components/PricingNotice';
-import Toast, { type ToastMessage } from './components/Toast';
+import Toast from './components/Toast';
 import BatchProgressBar from './components/BatchProgressBar';
 import ActionLog from './components/ActionLog';
 import { useActionLog } from './hooks/useActionLog';
+import { useToast } from './hooks/useToast';
+import { useTheme } from './hooks/useTheme';
 import { applyPromptStyle, buildSceneAnalysisStyleInstruction } from './utils/stylePrompt';
 import { SHOT_TYPE_OPTIONS } from './utils/promptModules';
 import { normalizePromptJson, serializeImagePrompt, extractLetteringFromScript } from './utils/promptCoherence';
@@ -164,9 +166,7 @@ const App: React.FC = () => {
   const [isGalleryEditing, setIsGalleryEditing] = useState(false);
   const [textCosts, setTextCosts] = useState<TextCostEntry[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    try { return (localStorage.getItem('app-theme') as 'dark' | 'light') || 'dark'; } catch { return 'dark'; }
-  });
+  const { theme, setTheme } = useTheme();
   const [hasServerPlatformKey, setHasServerPlatformKey] = useState(false);
   const [platformProvider, setPlatformProvider] = useState<PlatformProvider>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -181,16 +181,9 @@ const App: React.FC = () => {
   const [storyboardRows, setStoryboardRows] = useState<StoryboardRow[]>([]);
   const [pendingScriptText, setPendingScriptText] = useState<string>('');
   const [graphicStyleSceneId, setGraphicStyleSceneId] = useState<number | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast, showToast, dismissToast } = useToast();
   const [isHydrating, setIsHydrating] = useState<boolean>(true);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
-
-  const showToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ id: `${Date.now()}`, message, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), 3200);
-  }, []);
 
   const getImageDimensions = useCallback((base64Url: string): Promise<{ width: number; height: number }> => {
     return new Promise((resolve, reject) => {
@@ -461,8 +454,7 @@ const App: React.FC = () => {
         console.error("Failed to load presets from localStorage", e);
     }
 
-    // Apply saved theme on mount
-    document.documentElement.setAttribute('data-theme', localStorage.getItem('app-theme') || 'dark');
+    // (tema aplicado pelo hook useTheme)
 
     // Garante que o cookie CSRF está disponível antes de qualquer POST.
     void primeCsrfCookie();
@@ -1644,12 +1636,8 @@ REGRAS ESTRITAS:
     }
   }, [presets]);
 
-  const handleToggleTheme = useCallback((newTheme: 'dark' | 'light') => {
-    setTheme(newTheme);
-    // Apply to both the html element (for body:has) and store
-    document.documentElement.setAttribute('data-theme', newTheme);
-    try { localStorage.setItem('app-theme', newTheme); } catch {}
-  }, []);
+  // useTheme já persiste em localStorage e reflete no atributo data-theme.
+  const handleToggleTheme = setTheme;
 
 
   const isDone = processingState === 'done';
@@ -2712,7 +2700,7 @@ REGRAS ESTRITAS:
         </Suspense>
       )}
 
-      <Toast toast={toast} onDismiss={() => setToast(null)} />
+      <Toast toast={toast} onDismiss={dismissToast} />
 
       {currentUser?.isAdmin && !isAdminOpen && (
         <button

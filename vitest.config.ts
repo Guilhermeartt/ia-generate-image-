@@ -2,8 +2,11 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // Backend (.mjs/.ts) roda em node por padrão; testes de UI (.tsx) declaram
+    // `// @vitest-environment jsdom` no topo do arquivo.
     environment: 'node',
-    include: ['**/*.{test,spec}.{ts,mjs}'],
+    setupFiles: ['./vitest.setup.ts'],
+    include: ['**/*.{test,spec}.{ts,tsx,mjs}'],
     exclude: ['node_modules', 'dist', '.venv-sam2'],
     // Testes nunca tocam no banco real: usam SQLite em memória.
     env: {
