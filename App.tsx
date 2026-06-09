@@ -61,6 +61,7 @@ import { SHOT_TYPE_OPTIONS } from './utils/promptModules';
 import { normalizePromptJson, serializeImagePrompt, extractLetteringFromScript } from './utils/promptCoherence';
 import { parseCSV, rowsToCsvText, storyboardRowsToCsvRows } from './utils/csv';
 import { isDocxFile, extractTextFromDocx } from './utils/docx';
+import { computeCharacterOrigins } from './utils/characterOrigins';
 import {
   clearAuthToken,
   type CurrentUser,
@@ -680,23 +681,7 @@ const App: React.FC = () => {
         }));
       }
 
-      // Compute character origins using detected_characters from AI (precise) with fallback
-      const charsWithOrigin = initialChars.map(char => {
-        const nameLower = char.name.toLowerCase();
-        const firstScene = processedScenes.find(s =>
-          // Primary: use the AI's explicit detected_characters list
-          (s.detected_characters ?? []).map((n: string) => n.toLowerCase()).includes(nameLower) ||
-          // Fallback: tagged_description bracket search
-          s.tagged_description?.toLowerCase().includes(`[${nameLower}]`)
-        );
-        return {
-          ...char,
-          firstSceneOrder: firstScene?.order,
-          origin: firstScene
-            ? `Aparece pela primeira vez na cena ${firstScene.order} — ${firstScene.original_location}`
-            : undefined,
-        };
-      });
+      const charsWithOrigin = computeCharacterOrigins(initialChars, processedScenes);
       setCharacters(charsWithOrigin);
 
       setScenes(processedScenes);
@@ -851,20 +836,7 @@ const App: React.FC = () => {
         }));
       }
 
-      const charsWithOrigin = initialChars.map(char => {
-        const nameLower = char.name.toLowerCase();
-        const firstScene = processedScenes.find(s =>
-          (s.detected_characters ?? []).map((n: string) => n.toLowerCase()).includes(nameLower) ||
-          s.tagged_description?.toLowerCase().includes(`[${nameLower}]`)
-        );
-        return {
-          ...char,
-          firstSceneOrder: firstScene?.order,
-          origin: firstScene
-            ? `Aparece pela primeira vez na cena ${firstScene.order} — ${firstScene.original_location}`
-            : undefined,
-        };
-      });
+      const charsWithOrigin = computeCharacterOrigins(initialChars, processedScenes);
       setCharacters(charsWithOrigin);
       setScenes(processedScenes);
 
