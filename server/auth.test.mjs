@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { db } from './db.mjs';
 import {
   passwordHash,
   verifyPassword,
@@ -111,6 +112,23 @@ describe('rateLimit', () => {
     expect(rateLimit(key, 1, 50)).toBe(true);
     await new Promise((r) => setTimeout(r, 60));
     expect(rateLimit(key, 1, 50)).toBe(false);
+  });
+
+  it('persiste o contador entre chamadas (não depende de memória do processo)', () => {
+    const key = `test-persist-${Math.random()}`;
+    rateLimit(key, 5, 60000);
+    rateLimit(key, 5, 60000);
+    // Lê direto do banco para confirmar persistência
+    const row = db.prepare('SELECT count FROM rate_limits WHERE key = ?').get(key);
+    expect(Number(row.count)).toBe(2);
+  });
+
+  it('chaves independentes não interferem', () => {
+    const a = `ka-${Math.random()}`;
+    const b = `kb-${Math.random()}`;
+    expect(rateLimit(a, 1, 60000)).toBe(false);
+    expect(rateLimit(a, 1, 60000)).toBe(true);
+    expect(rateLimit(b, 1, 60000)).toBe(false); // b não foi afetado por a
   });
 });
 

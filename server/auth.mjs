@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { db, nowIso, id } from './db.mjs';
+import { db, nowIso, id, transaction } from './db.mjs';
 
 // ── Secrets & admin config ────────────────────────────────────────────────────
 const DEFAULT_SECRET = 'dev-secret-change-me';
@@ -19,24 +19,36 @@ export const isAdminUser = (user) => {
   return list.includes(String(user.email || '').toLowerCase());
 };
 
-// ── In-memory rate limiter ────────────────────────────────────────────────────
-const _rateLimitStore = new Map();
+// ── Rate limiter persistente (SQLite) ─────────────────────────────────────────
+// Sobrevive a restart e funciona com múltiplas instâncias (não depende de
+// memória do processo). Retorna true quando o limite foi excedido.
 export const rateLimit = (key, maxAttempts, windowMs) => {
   const now = Date.now();
-  const entry = _rateLimitStore.get(key) || { count: 0, resetAt: now + windowMs };
-  if (now > entry.resetAt) {
-    entry.count = 0;
-    entry.resetAt = now + windowMs;
-  }
-  entry.count++;
-  _rateLimitStore.set(key, entry);
-  return entry.count > maxAttempts;
+  return transaction(() => {
+    const row = db.prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?').get(key);
+    let count;
+    let resetAt;
+    if (!row || now > Number(row.reset_at)) {
+      count = 1;
+      resetAt = now + windowMs;
+    } else {
+      count = Number(row.count) + 1;
+      resetAt = Number(row.reset_at);
+    }
+    db.prepare(`
+      INSERT INTO rate_limits (key, count, reset_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET count = excluded.count, reset_at = excluded.reset_at
+    `).run(key, count, resetAt);
+    return count > maxAttempts;
+  });
 };
-// Prune stale entries every 10 minutes to avoid memory leaks.
+
+// Limpa entradas expiradas periodicamente para o banco não crescer sem limite.
 setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of _rateLimitStore.entries()) {
-    if (now > v.resetAt) _rateLimitStore.delete(k);
+  try {
+    db.prepare('DELETE FROM rate_limits WHERE reset_at < ?').run(Date.now());
+  } catch {
+    /* ignore */
   }
 }, 600_000).unref();
 
