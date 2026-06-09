@@ -60,6 +60,7 @@ import { applyPromptStyle, buildSceneAnalysisStyleInstruction } from './utils/st
 import { SHOT_TYPE_OPTIONS } from './utils/promptModules';
 import { normalizePromptJson, serializeImagePrompt, extractLetteringFromScript } from './utils/promptCoherence';
 import { parseCSV, rowsToCsvText, storyboardRowsToCsvRows } from './utils/csv';
+import { isDocxFile, extractTextFromDocx } from './utils/docx';
 import {
   clearAuthToken,
   type CurrentUser,
@@ -89,8 +90,6 @@ type ProcessingState =
   | 'refining'
   | 'done'
   | 'error';
-  
-declare const JSZip: any;
 
 const PREDEFINED_STYLES = [...SHOT_TYPE_OPTIONS];
 
@@ -455,38 +454,6 @@ const App: React.FC = () => {
   const handleFileChange = (selectedFile: File) => {
     setFile(selectedFile);
     resetState();
-  };
-
-  const isDocxFile = (candidate: File): boolean => (
-    candidate.name.toLowerCase().endsWith('.docx') ||
-    candidate.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  );
-
-  const extractTextFromDocx = async (docxFile: File): Promise<string> => {
-    if (typeof JSZip === 'undefined') {
-      throw new Error('A biblioteca JSZip é necessária para ler arquivos .docx.');
-    }
-
-    const zip = await JSZip.loadAsync(docxFile);
-    const documentFile = zip.file('word/document.xml');
-    if (!documentFile) {
-      throw new Error('Não foi possível encontrar o conteúdo principal do arquivo .docx.');
-    }
-
-    const xml = await documentFile.async('string');
-    const doc = new DOMParser().parseFromString(xml, 'application/xml');
-    const paragraphs = Array.from(doc.getElementsByTagName('w:p'));
-    const text = paragraphs
-      .map(paragraph => Array.from(paragraph.getElementsByTagName('w:t')).map(node => node.textContent || '').join(''))
-      .map(line => line.trim())
-      .filter(Boolean)
-      .join('\n\n');
-
-    if (text.length < 20) {
-      throw new Error('O arquivo .docx não possui texto suficiente para análise.');
-    }
-
-    return text;
   };
 
   const handleAnalyze = useCallback(async (
