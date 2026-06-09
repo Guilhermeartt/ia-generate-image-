@@ -26,6 +26,7 @@ Express (server/geminiProxy.mjs)
 | Camada | Tecnologia |
 |---|---|
 | UI | React 19, Tailwind v3 (PostCSS), CSS tokens em `styles/main.css` |
+| Vídeo | Remotion 4 + `@remotion/player` para preview programático do storyboard |
 | Build | Vite 6 (code-splitting por `React.lazy`) |
 | Backend | Express 4, `node:sqlite` (DatabaseSync) |
 | Auth | HMAC token + cookie httpOnly, pbkdf2, AES-256-GCM, CSRF double-submit |
@@ -38,20 +39,24 @@ Express (server/geminiProxy.mjs)
 
 ```
 projeto/
-├── App.tsx                 # ⚠️ God component (2.7k linhas) — alvo de refatoração
+├── App.tsx                 # orquestração da SPA (~2.8k linhas; ver dívida técnica)
 ├── index.tsx               # entry: importa CSS, inicia Sentry, monta React
 ├── index.html              # shell mínimo (CSS agora é buildado)
 ├── styles/main.css         # design tokens + classes utilitárias + @tailwind
 │
-├── components/             # 36 componentes (atualmente flat — ver "Alvo" abaixo)
+├── components/             # componentes (flat — ver "Alvo" abaixo)
+│   ├── layout/             # Sidebar, Topbar, MobileBottomNav (navegação)
+│   └── video/              # composição Remotion e estúdio de preview
 ├── hooks/                  # lógica de estado reutilizável (useScenes, useCharacters…)
+│   └── useNavigation.ts    # view ativa, hash da URL (#/cenas), painéis
 ├── services/               # acesso a API e SDKs
 │   ├── geminiService.ts    # chamadas /api/gemini/*
 │   ├── saasService.ts      # auth, billing, projetos, admin
 │   ├── httpClient.ts       # fetch com CSRF automático
 │   └── sentryClient.ts     # Sentry (dynamic import)
 ├── utils/                  # puro, sem React (promptCoherence, localDraft…)
-├── config/                 # prompts e constantes
+├── config/                 # prompts, constantes e registry de views
+│   └── views.tsx           # fonte única das views (id, slug, rótulos, ícone)
 │
 ├── server/                 # backend Node
 │   ├── geminiProxy.mjs     # entry: middlewares, registro de rotas
@@ -80,6 +85,12 @@ projeto/
   valida assinatura própria).
 - **Entrada de rota crítica é validada com Zod** antes de tocar o banco.
 - **Segredos nunca em log** (`requestLogger` mascara campos sensíveis).
+- **Navegação**: as views de produção vivem no registry `config/views.tsx`
+  (id, slug, rótulos, ícone). Sidebar, Topbar, MobileBottomNav e o hash da
+  URL derivam de lá — para criar uma view nova, adicione uma entrada no
+  registry e o bloco de conteúdo correspondente em `App.tsx`. Navegação do
+  usuário usa `navigateTo` (empilha histórico → voltar/avançar funciona);
+  mudanças programáticas usam `setActiveView` (substitui o hash).
 
 ## Qualidade — comandos
 
@@ -103,9 +114,14 @@ npm run build        # build de produção
 - **`App.tsx`: 2.715 → 2.466 linhas** — concerns extraídos para hooks
   (`useToast`, `useTheme`, `useCurrentUser`, `useAnalysisHistory`,
   `usePresets`, `useTextCosts`) e utils puros (`csv`, `docx`).
+- **Navegação extraída de `App.tsx` (−~250 linhas)** — layout em
+  `components/layout/` (Sidebar, Topbar, MobileBottomNav), estado em
+  `hooks/useNavigation.ts` (com hash routing `#/cenas`) e registry único de
+  views em `config/views.tsx` (antes a definição era triplicada).
 
 ### Pendente (priorizada)
-1. **`App.tsx` ainda em 2.466 linhas** — o fluxo de análise (`handleAnalyze`)
+1. **`App.tsx` em ~2.8k linhas** (cresceu com a integração do estúdio de
+   vídeo) — o fluxo de análise (`handleAnalyze`)
    e os handlers de imagem orquestram vários hooks; extração exige lift de
    estado. Menor prioridade agora que está sob controle.
 2. **TypeScript strict completo** — hoje parcial (`noImplicitReturns` etc.);

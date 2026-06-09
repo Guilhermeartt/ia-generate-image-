@@ -158,6 +158,20 @@ export interface ScenePromptJson {
  */
 export type SceneReferenceKind = 'spatial' | 'object' | 'screen';
 
+export type VideoLetteringPosition = 'top' | 'center' | 'bottom';
+export type VideoLetteringAlign = 'left' | 'center' | 'right';
+export type VideoLetteringStyle = 'cinematic' | 'box' | 'clean';
+
+/** Texto sobreposto à cena na composição de vídeo Remotion. */
+export interface SceneVideoLettering {
+  text: string;
+  position: VideoLetteringPosition;
+  align: VideoLetteringAlign;
+  style: VideoLetteringStyle;
+  fontSize: number;
+  color: string;
+}
+
 /** Referência visual persistente anexada a uma cena (objeto, logo, imagem externa, screenshot…). */
 export interface SceneReference {
   id: string;
@@ -238,6 +252,8 @@ export interface Scene {
   versionCount?: number;
   /** Referências visuais persistentes (objetos, logos, imagens externas) anexadas à cena. */
   references?: SceneReference[];
+  /** Configuração editável do lettering usado no vídeo do storyboard. */
+  videoLettering?: SceneVideoLettering;
 }
 
 // fix: Add SavedAnalysis interface definition.

@@ -9,6 +9,7 @@ Uma aplicação web para transformar roteiros em CSV em storyboards visuais cine
 - **Análise de Roteiro** — Faz upload de um CSV com cenas e a IA analisa o contexto geral, extrai personagens e cria prompts otimizados para geração de imagens.
 - **Geração de Personagens** — Cria retratos de cada personagem com base em suas características físicas descritas no roteiro.
 - **Geração de Cenas** — Gera imagens cinematográficas para cada cena, usando os personagens como referência visual para manter consistência.
+- **Preview de Vídeo com Remotion** — Monta as cenas geradas em uma timeline reproduzível, com transições, legendas e duração configurável.
 - **Gerar com Referência Visual** — Selecione uma região da imagem existente arrastando o mouse para usá-la como referência na próxima geração.
 - **Galeria do Projeto** — Veja e edite qualquer imagem gerada (personagens e cenas, incluindo versões anteriores) em um único painel.
 - **Edição de Imagens** — Edite qualquer imagem com um prompt de texto (ex: "mude o fundo para noturno", "adicione chuva").
@@ -164,6 +165,12 @@ Envolva o nome exato do personagem entre colchetes no campo `context` para que a
 
 - **Exportar Projeto (.zip)** — salva imagens + prompts + configurações em um arquivo compactado
 - **Carregar um Projeto** — reimporta um `.zip` exportado anteriormente para continuar de onde parou
+
+### 6. Vídeo do storyboard
+
+- Abra a aba **Vídeo** depois de gerar imagens para as cenas
+- Ajuste a duração de cada cena e ative ou desative os textos sobrepostos
+- O preview usa o Remotion Player no navegador; exportação MP4 requer um renderizador Remotion no backend
 
 ---
 

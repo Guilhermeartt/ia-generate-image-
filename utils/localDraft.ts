@@ -1,5 +1,6 @@
 import type { Character, Scene, StoryboardRow, ImageModel } from '../types';
 import type { StyleOption } from '../components/StyleSelectionModal';
+import type { AppView } from '../config/views';
 
 const DB_NAME = 'storyboard-app';
 const STORE_NAME = 'drafts';
@@ -23,7 +24,7 @@ export interface DraftState {
   aspectRatio: string;
   resolution: '1K' | '2K' | '4K';
   numberOfImages: number;
-  activeView: 'characters' | 'scenes' | 'costs';
+  activeView: AppView;
   scenesViewMode: 'cards' | 'table';
   availableStyles: string[];
 }

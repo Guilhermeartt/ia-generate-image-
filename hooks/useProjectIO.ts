@@ -1,5 +1,6 @@
 import { useState, useCallback, type ChangeEvent } from 'react';
 import type { Character, Scene, ImageModel, ProjectState } from '../types';
+import type { AppView } from '../config/views';
 import { saveCloudProject, type CurrentUser } from '../services/saasService';
 import { SHOT_TYPE_OPTIONS } from '../utils/promptModules';
 
@@ -36,7 +37,7 @@ interface UseProjectIOParams {
   setSelectedPresetId: (id: string) => void;
   setFile: (f: File | null) => void;
   setAvailableStyles: (styles: string[]) => void;
-  setActiveView: (view: 'characters' | 'scenes' | 'costs') => void;
+  setActiveView: (view: AppView) => void;
   setIsAuthOpen: (open: boolean) => void;
   getImageDimensions: (base64Url: string) => Promise<{ width: number; height: number }>;
 }

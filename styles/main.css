@@ -891,6 +891,16 @@
         margin: 0 auto;
         padding: 18px 24px 72px;
       }
+
+      .video-studio-grid {
+        grid-template-columns: minmax(0, 1fr) 320px;
+      }
+
+      .video-lettering-fields {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
+      }
       .recent-projects-section,
       .quick-tool-section,
       .script-preview-section {
@@ -1020,6 +1030,10 @@
         white-space: nowrap;
       }
       @media (max-width: 860px) {
+        .video-studio-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
         .script-preview-grid {
           grid-template-columns: 1fr;
         }
@@ -1374,7 +1388,9 @@
           bottom: 10px;
           z-index: 80;
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          /* uma coluna por botão — segue o nº de views do registry */
+          grid-auto-flow: column;
+          grid-auto-columns: 1fr;
           gap: 4px;
           padding: 5px;
           border-radius: 12px;
