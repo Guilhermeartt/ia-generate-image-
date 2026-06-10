@@ -207,38 +207,43 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
         ref={cardRef}
         className="card card-hover anim-up sc-root"
       >
-        <div className="sc-image">
-          <SceneCardImagePanel
-            scene={scene}
-            referenceData={referenceData}
-            isBusy={isBusy}
-            busyMessage={busyMessage}
-            isRefTooltipOpen={state.isRefTooltipOpen}
-            onPreview={onPreview}
-            onAnalyzeText={() => onAnalyzeText(scene)}
-            onDownload={handleDownload}
-            onEditImage={() => dispatch({ type: 'OPEN_EDIT' })}
-            onCompareVersions={() => dispatch({ type: 'OPEN_COMPARE' })}
-            onRevertImage={() => onRevertImage(scene.id)}
-            onVisualize={() => onVisualize(scene.id)}
-            onToggleRefTooltip={() => dispatch({ type: 'TOGGLE_REF_TOOLTIP' })}
-            onCloseRefTooltip={() => dispatch({ type: 'CLOSE_REF_TOOLTIP' })}
-          />
+        <div className="sc-left">
+          <div className="sc-image">
+            <SceneCardImagePanel
+              scene={scene}
+              referenceData={referenceData}
+              isBusy={isBusy}
+              busyMessage={busyMessage}
+              isRefTooltipOpen={state.isRefTooltipOpen}
+              onPreview={onPreview}
+              onAnalyzeText={() => onAnalyzeText(scene)}
+              onDownload={handleDownload}
+              onEditImage={() => dispatch({ type: 'OPEN_EDIT' })}
+              onCompareVersions={() => dispatch({ type: 'OPEN_COMPARE' })}
+              onRevertImage={() => onRevertImage(scene.id)}
+              onVisualize={() => onVisualize(scene.id)}
+              onToggleRefTooltip={() => dispatch({ type: 'TOGGLE_REF_TOOLTIP' })}
+              onCloseRefTooltip={() => dispatch({ type: 'CLOSE_REF_TOOLTIP' })}
+            />
+          </div>
+
+          <div className="sc-left-meta">
+            <SceneCardHeader scene={scene} />
+            <SafeTaggedDescription text={scene.tagged_description} className="sc-description" />
+
+            <SceneCharacterTags
+              scene={scene}
+              characters={characters}
+              isBusy={isBusy}
+              onSceneCharacterEdit={onSceneCharacterEdit}
+            />
+
+            <SceneLettering scene={scene} onIncludeLetteringChange={onIncludeLetteringChange} />
+          </div>
         </div>
 
         <div className="sc-content">
-          <SceneCardHeader scene={scene} />
           <SceneCardCostStrip scene={scene} />
-          <SafeTaggedDescription text={scene.tagged_description} className="sc-description" />
-
-          <SceneCharacterTags
-            scene={scene}
-            characters={characters}
-            isBusy={isBusy}
-            onSceneCharacterEdit={onSceneCharacterEdit}
-          />
-
-          <SceneLettering scene={scene} onIncludeLetteringChange={onIncludeLetteringChange} />
 
           <SceneGenerationChecklist
             scene={scene}

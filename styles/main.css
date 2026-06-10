@@ -1994,18 +1994,31 @@
       .sc-root {
         overflow: hidden;
         display: grid;
-        grid-template-columns: minmax(0, 36%) minmax(0, 1fr);
-        min-height: 220px;
+        grid-template-columns: minmax(300px, 40%) minmax(0, 1fr);
       }
       @media (max-width: 720px) {
         .sc-root { grid-template-columns: 1fr; }
-        .sc-image { border-right: none !important; border-bottom: 1px solid var(--border); aspect-ratio: 16/9; min-height: 0 !important; }
+        .sc-left { border-right: none; border-bottom: 1px solid var(--border); }
+      }
+      /* Painel esquerdo = preview da cena (imagem + texto). */
+      .sc-left {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        background: var(--surface-2);
+        border-right: 1px solid var(--border);
       }
       .sc-image {
         position: relative;
         overflow: hidden;
-        border-right: 1px solid var(--border);
-        min-height: 220px;
+        background: #000;
+      }
+      .sc-left-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 14px 14px;
+        min-width: 0;
       }
       .sc-content {
         display: flex;
@@ -2091,22 +2104,19 @@
       .sc-img-frame {
         position: relative;
         width: 100%;
-        height: 100%;
-        min-height: 200px;
       }
       .sc-img-button {
         display: block;
         width: 100%;
-        height: 100%;
         border: none;
         padding: 0;
         cursor: pointer;
         background: none;
       }
       .sc-img-button img {
-        width: 100%; height: 100%;
-        object-fit: cover;
         display: block;
+        width: 100%;
+        height: auto;
         transition: transform .4s ease;
       }
       .sc-img-status {
@@ -2210,7 +2220,7 @@
       .sc-img-loading-state,
       .sc-img-error-state {
         width: 100%;
-        height: 100%;
+        aspect-ratio: 16 / 9;
         min-height: 200px;
         display: flex;
         flex-direction: column;
