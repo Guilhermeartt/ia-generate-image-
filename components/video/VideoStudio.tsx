@@ -12,6 +12,7 @@ import { StoryboardComposition, type StoryboardVideoScene } from './StoryboardCo
 import {
   DEFAULT_KEN_BURNS,
   DEFAULT_TRANSITION,
+  DEFAULT_TRANSITION_EASING,
   DEFAULT_TRANSITION_SECONDS,
   createVideoScenes,
   placeClipsOnTimeline,
@@ -78,6 +79,7 @@ const DEFAULT_MOTION: MotionDefaults = {
   secondsPerClip: 3,
   transition: DEFAULT_TRANSITION,
   transitionSeconds: DEFAULT_TRANSITION_SECONDS,
+  transitionEasing: DEFAULT_TRANSITION_EASING,
   kenBurns: DEFAULT_KEN_BURNS,
 };
 
@@ -160,6 +162,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
         defaultSecondsPerClip: effectiveDefaults.secondsPerClip,
         defaultTransition: effectiveDefaults.transition,
         defaultTransitionSeconds: effectiveDefaults.transitionSeconds,
+        defaultTransitionEasing: effectiveDefaults.transitionEasing,
         defaultKenBurns: effectiveDefaults.kenBurns,
       }),
     [scenes, effectiveDefaults],
@@ -198,6 +201,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
         if (overrideDraft.draft.kenBurns) next.kenBurns = overrideDraft.draft.kenBurns;
         if (overrideDraft.draft.transitionIn) next.transitionIn = overrideDraft.draft.transitionIn;
         if (overrideDraft.draft.transitionDurationSeconds !== undefined) next.transitionDurationSeconds = overrideDraft.draft.transitionDurationSeconds;
+        if (overrideDraft.draft.transitionEasing) next.transitionEasing = overrideDraft.draft.transitionEasing;
       }
       return next;
     });
@@ -554,7 +558,8 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
     return ov.durationSeconds !== undefined
       || ov.kenBurns !== undefined
       || ov.transitionIn !== undefined
-      || ov.transitionDurationSeconds !== undefined;
+      || ov.transitionDurationSeconds !== undefined
+      || ov.transitionEasing !== undefined;
   }, [selectedSourceScene, selectedClip]);
 
   const hasLetteringOverride = useMemo(() => {
@@ -729,6 +734,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
               displayDuration={selectedClip.durationSeconds}
               displayTransition={selectedClip.transitionIn}
               displayTransitionSeconds={selectedClip.transitionDurationSeconds}
+              displayTransitionEasing={selectedClip.transitionEasing}
               displayKenBurns={selectedClip.kenBurns}
               defaults={effectiveDefaults}
               hasOverride={hasMotionOverride}

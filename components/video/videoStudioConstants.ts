@@ -3,6 +3,7 @@ import type {
   VideoClipTransition,
   VideoKenBurnsDirection,
   VideoLetteringStyle,
+  VideoTransitionEasing,
 } from '@/types';
 
 export const FPS = 30;
@@ -21,9 +22,24 @@ export const TRANSITION_OPTIONS: ReadonlyArray<{ id: VideoClipTransition; label:
   { id: 'cut', label: 'Corte seco' },
   { id: 'crossfade', label: 'Crossfade' },
   { id: 'fade-black', label: 'Fade para preto' },
+  { id: 'fade-white', label: 'Fade para branco' },
+  { id: 'blur', label: 'Blur dissolve' },
+  { id: 'zoom', label: 'Zoom punch' },
   { id: 'slide-left', label: 'Slide ←' },
+  { id: 'slide-right', label: 'Slide →' },
   { id: 'slide-up', label: 'Slide ↑' },
+  { id: 'slide-down', label: 'Slide ↓' },
   { id: 'wipe-left', label: 'Wipe ←' },
+  { id: 'wipe-right', label: 'Wipe →' },
+  { id: 'wipe-up', label: 'Wipe ↑' },
+  { id: 'wipe-down', label: 'Wipe ↓' },
+];
+
+export const TRANSITION_EASING_OPTIONS: ReadonlyArray<{ id: VideoTransitionEasing; label: string }> = [
+  { id: 'ease-in-out', label: 'Ease in-out (suave)' },
+  { id: 'ease-out', label: 'Ease out' },
+  { id: 'ease-in', label: 'Ease in' },
+  { id: 'linear', label: 'Linear' },
 ];
 
 export const KEN_BURNS_OPTIONS: ReadonlyArray<{ id: VideoKenBurnsDirection; label: string }> = [

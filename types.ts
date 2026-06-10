@@ -200,9 +200,24 @@ export type VideoClipTransition =
   | 'cut'
   | 'crossfade'
   | 'fade-black'
+  | 'fade-white'
+  | 'blur'
+  | 'zoom'
   | 'slide-left'
+  | 'slide-right'
   | 'slide-up'
-  | 'wipe-left';
+  | 'slide-down'
+  | 'wipe-left'
+  | 'wipe-right'
+  | 'wipe-up'
+  | 'wipe-down';
+
+/** Curva de aceleração aplicada às transições entre clipes e ao Ken Burns. */
+export type VideoTransitionEasing =
+  | 'linear'
+  | 'ease-in'
+  | 'ease-out'
+  | 'ease-in-out';
 
 /** Direção do efeito Ken Burns (pan + zoom) aplicado à imagem do clipe. */
 export type VideoKenBurnsDirection =
@@ -256,6 +271,8 @@ export interface SceneVideoClipOverride {
   transitionIn?: VideoClipTransition;
   /** Duração da transição em segundos. */
   transitionDurationSeconds?: number;
+  /** Curva de easing da transição de entrada (ease-in / ease-out / ease-in-out / linear). */
+  transitionEasing?: VideoTransitionEasing;
   /** Ken Burns específico deste clipe. */
   kenBurns?: VideoKenBurnsConfig;
   /** Lettering específico deste clipe — sobrescreve o da cena-pai. */
@@ -384,6 +401,8 @@ export interface VideoStudioConfig {
   defaultTransition: VideoClipTransition;
   /** Duração padrão da transição em segundos. */
   defaultTransitionSeconds: number;
+  /** Easing padrão das transições (pode ser sobrescrito por clipe). */
+  defaultTransitionEasing?: VideoTransitionEasing;
   /** Ken Burns padrão (pode ser sobrescrito por clipe). */
   defaultKenBurns: VideoKenBurnsConfig;
   /** Trilha de áudio opcional. */

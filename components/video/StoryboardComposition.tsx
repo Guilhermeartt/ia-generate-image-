@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import {
   AbsoluteFill,
   Audio,
+  Easing,
   Img,
   Sequence,
   interpolate,
@@ -14,6 +15,7 @@ import type {
   VideoClipTransition,
   VideoKenBurnsConfig,
   VideoLetteringPosition,
+  VideoTransitionEasing,
 } from '@/types';
 import { placeClipsOnTimeline } from './videoScenes';
 
@@ -34,6 +36,7 @@ export interface StoryboardVideoScene {
   kenBurns: VideoKenBurnsConfig;
   transitionIn: VideoClipTransition;
   transitionDurationSeconds: number;
+  transitionEasing: VideoTransitionEasing;
   hasOverride: boolean;
   parentSceneOffsetSeconds: number;
   parentSceneDurationSeconds: number;
@@ -79,6 +82,24 @@ const kenBurnsTransform = (
   }
 };
 
+// ─── Easing das transições (ease-in / ease-out / ease-in-out / linear) ───
+const EASING_FN: Record<VideoTransitionEasing, (t: number) => number> = {
+  'linear': Easing.linear,
+  'ease-in': Easing.in(Easing.cubic),
+  'ease-out': Easing.out(Easing.cubic),
+  'ease-in-out': Easing.inOut(Easing.cubic),
+};
+
+const resolveEasing = (easing: VideoTransitionEasing | undefined): ((t: number) => number) =>
+  EASING_FN[easing ?? 'ease-in-out'] ?? EASING_FN['ease-in-out'];
+
+interface TransitionVisual {
+  transform?: string;
+  opacity?: number;
+  clipPath?: string;
+  filter?: string;
+}
+
 interface TransitionStyleArgs {
   type: VideoClipTransition;
   enterProgress: number;
@@ -86,38 +107,83 @@ interface TransitionStyleArgs {
   isIncoming: boolean;
 }
 
-const transitionStyle = ({ type, enterProgress, exitProgress, isIncoming }: TransitionStyleArgs): React.CSSProperties => {
-  if (type === 'cut') {
-    return {};
+/**
+ * Estilo aplicado a um clipe para uma transição.
+ *
+ * - `isIncoming`: o clipe está ENTRANDO (usa enterProgress 0→1).
+ * - caso contrário: o clipe está SAINDO para dar lugar ao próximo (usa exitProgress 0→1),
+ *   e `type` é a transição do PRÓXIMO clipe.
+ *
+ * Crossfade/blur mantêm o clipe de saída opaco e só revelam o de entrada por cima,
+ * evitando o "buraco" escuro no meio. Slides usam empurrão (push) para nunca abrir
+ * vão. Fades são tratados por overlay de cor (ver ClipLayer).
+ */
+const transitionStyle = ({ type, enterProgress, exitProgress, isIncoming }: TransitionStyleArgs): TransitionVisual => {
+  switch (type) {
+    case 'cut':
+    case 'fade-black':
+    case 'fade-white':
+      return {};
+    case 'crossfade':
+      return isIncoming ? { opacity: enterProgress } : {};
+    case 'blur':
+      return isIncoming
+        ? { opacity: enterProgress, filter: `blur(${interpolate(enterProgress, [0, 1], [18, 0])}px)` }
+        : { filter: `blur(${interpolate(exitProgress, [0, 1], [0, 18])}px)` };
+    case 'zoom':
+      return isIncoming
+        ? { opacity: enterProgress, transform: `scale(${interpolate(enterProgress, [0, 1], [0.72, 1])})` }
+        : { transform: `scale(${interpolate(exitProgress, [0, 1], [1, 1.18])})` };
+    case 'slide-left':
+      return isIncoming
+        ? { transform: `translateX(${interpolate(enterProgress, [0, 1], [100, 0])}%)` }
+        : { transform: `translateX(${interpolate(exitProgress, [0, 1], [0, -100])}%)` };
+    case 'slide-right':
+      return isIncoming
+        ? { transform: `translateX(${interpolate(enterProgress, [0, 1], [-100, 0])}%)` }
+        : { transform: `translateX(${interpolate(exitProgress, [0, 1], [0, 100])}%)` };
+    case 'slide-up':
+      return isIncoming
+        ? { transform: `translateY(${interpolate(enterProgress, [0, 1], [100, 0])}%)` }
+        : { transform: `translateY(${interpolate(exitProgress, [0, 1], [0, -100])}%)` };
+    case 'slide-down':
+      return isIncoming
+        ? { transform: `translateY(${interpolate(enterProgress, [0, 1], [-100, 0])}%)` }
+        : { transform: `translateY(${interpolate(exitProgress, [0, 1], [0, 100])}%)` };
+    case 'wipe-left':
+      return isIncoming ? { clipPath: `inset(0 ${interpolate(enterProgress, [0, 1], [100, 0])}% 0 0)` } : {};
+    case 'wipe-right':
+      return isIncoming ? { clipPath: `inset(0 0 0 ${interpolate(enterProgress, [0, 1], [100, 0])}%)` } : {};
+    case 'wipe-up':
+      return isIncoming ? { clipPath: `inset(${interpolate(enterProgress, [0, 1], [100, 0])}% 0 0 0)` } : {};
+    case 'wipe-down':
+      return isIncoming ? { clipPath: `inset(0 0 ${interpolate(enterProgress, [0, 1], [100, 0])}% 0)` } : {};
+    default:
+      return {};
   }
-  if (type === 'crossfade') {
-    if (isIncoming) return { opacity: enterProgress };
-    return { opacity: 1 - exitProgress };
-  }
-  if (type === 'fade-black') {
-    if (isIncoming) return { opacity: enterProgress };
-    return { opacity: 1 - exitProgress };
-  }
-  if (type === 'slide-left') {
-    if (isIncoming) {
-      return { transform: `translateX(${interpolate(enterProgress, [0, 1], [100, 0])}%)` };
-    }
-    return { transform: `translateX(${interpolate(exitProgress, [0, 1], [0, -25])}%)`, opacity: 1 - exitProgress * 0.3 };
-  }
-  if (type === 'slide-up') {
-    if (isIncoming) {
-      return { transform: `translateY(${interpolate(enterProgress, [0, 1], [100, 0])}%)` };
-    }
-    return { transform: `translateY(${interpolate(exitProgress, [0, 1], [0, -25])}%)`, opacity: 1 - exitProgress * 0.3 };
-  }
-  if (type === 'wipe-left') {
-    if (isIncoming) {
-      const right = interpolate(enterProgress, [0, 1], [100, 0]);
-      return { clipPath: `inset(0 ${right}% 0 0)` };
-    }
-    return {};
-  }
-  return {};
+};
+
+/**
+ * Funde o estilo de entrada (deste clipe) com o de saída (rumo ao próximo) sem que um
+ * sobrescreva o outro: concatena transforms/filters, MULTIPLICA opacidades e mantém o
+ * clipPath definido. Era exatamente o bug antigo — o spread `{...in, ...out}` zerava a
+ * transição de entrada sempre que havia uma transição de saída.
+ */
+const mergeTransitionVisuals = (
+  incoming: TransitionVisual,
+  outgoing: TransitionVisual,
+): React.CSSProperties => {
+  const transforms = [incoming.transform, outgoing.transform]
+    .filter((value): value is string => typeof value === 'string' && value !== 'none');
+  const filters = [incoming.filter, outgoing.filter]
+    .filter((value): value is string => typeof value === 'string' && !/blur\(0(?:px)?\)/.test(value));
+  const opacity = (incoming.opacity ?? 1) * (outgoing.opacity ?? 1);
+  return {
+    transform: transforms.length ? transforms.join(' ') : undefined,
+    filter: filters.length ? filters.join(' ') : undefined,
+    opacity,
+    clipPath: incoming.clipPath ?? outgoing.clipPath,
+  };
 };
 
 interface ClipLayerProps {
@@ -126,9 +192,13 @@ interface ClipLayerProps {
   transitionInFrames: number;
   nextTransitionInFrames: number;
   nextTransitionType: VideoClipTransition;
+  nextTransitionEasing: VideoTransitionEasing;
   showCaptions: boolean;
   fps: number;
 }
+
+const isFadeColorTransition = (type: VideoClipTransition): boolean =>
+  type === 'fade-black' || type === 'fade-white';
 
 const ClipLayer: React.FC<ClipLayerProps> = ({
   clip,
@@ -136,6 +206,7 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
   transitionInFrames,
   nextTransitionInFrames,
   nextTransitionType,
+  nextTransitionEasing,
   showCaptions,
   fps,
 }) => {
@@ -143,20 +214,33 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
   const { width, height } = useVideoConfig();
   const baseSize = Math.min(width, height);
 
+  // Ken Burns com aceleração suave (ease-in-out) nas pontas — movimento mais premium.
   const kenBurnsProgress = interpolate(frame, [0, Math.max(1, durationFrames - 1)], [0, 1], {
+    easing: Easing.inOut(Easing.sin),
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
   const kenBurns = kenBurnsTransform(clip.kenBurns, kenBurnsProgress);
 
+  const enterEasing = resolveEasing(clip.transitionEasing);
+  const exitEasing = resolveEasing(nextTransitionEasing);
+
   const enterProgress = transitionInFrames === 0
     ? 1
-    : interpolate(frame, [0, transitionInFrames], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    : interpolate(frame, [0, transitionInFrames], [0, 1], {
+        easing: enterEasing,
+        extrapolateLeft: 'clamp',
+        extrapolateRight: 'clamp',
+      });
 
   const exitStart = Math.max(0, durationFrames - nextTransitionInFrames);
   const exitProgress = nextTransitionInFrames === 0
     ? 0
-    : interpolate(frame, [exitStart, durationFrames], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+    : interpolate(frame, [exitStart, durationFrames], [0, 1], {
+        easing: exitEasing,
+        extrapolateLeft: 'clamp',
+        extrapolateRight: 'clamp',
+      });
 
   const incomingStyle = transitionStyle({
     type: clip.transitionIn,
@@ -170,12 +254,17 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
     exitProgress,
     isIncoming: false,
   });
+  const transitionCss = mergeTransitionVisuals(incomingStyle, outgoingStyle);
 
-  const blackOverlayOpacity = clip.transitionIn === 'fade-black'
-    ? Math.max(0, 1 - enterProgress * 2)
-    : nextTransitionType === 'fade-black'
-      ? Math.max(0, exitProgress * 2 - 0.5)
-      : 0;
+  // Overlay de cor para fades (preto/branco). Como esses clipes ficam sequenciais
+  // (sem overlap), o de saída escurece por completo e o de entrada surge a partir
+  // da cor — um verdadeiro fade-to-color sem sobreposição fantasma.
+  const enterFade = isFadeColorTransition(clip.transitionIn) ? 1 - enterProgress : 0;
+  const exitFade = isFadeColorTransition(nextTransitionType) ? exitProgress : 0;
+  const fadeOverlayOpacity = Math.max(enterFade, exitFade);
+  const fadeColor = enterFade >= exitFade
+    ? (clip.transitionIn === 'fade-white' ? '#ffffff' : '#000000')
+    : (nextTransitionType === 'fade-white' ? '#ffffff' : '#000000');
 
   const letteringStartFrame = Math.max(
     0,
@@ -328,8 +417,8 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
   const showCaret = enterAnim === 'typewriter' && typewriterRatio < 1 && typewriterRatio > 0;
 
   return (
-    <AbsoluteFill style={{ ...incomingStyle, ...outgoingStyle }}>
-      <AbsoluteFill style={{ overflow: 'hidden' }}>
+    <AbsoluteFill style={transitionCss}>
+      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
         <Img
           src={clip.imageUrl}
           style={{
@@ -340,19 +429,24 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
             transformOrigin: 'center center',
           }}
         />
+        {/* Gradiente cinematográfico (escurece base e topo para destacar o lettering) */}
         <AbsoluteFill
           style={{
             background: isCinematic
-              ? 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.03) 42%, rgba(0,0,0,0.82) 100%)'
-              : 'linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.2))',
+              ? 'linear-gradient(180deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.04) 38%, rgba(0,0,0,0.06) 60%, rgba(0,0,0,0.86) 100%)'
+              : 'linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0.04) 50%, rgba(0,0,0,0.28))',
+            pointerEvents: 'none',
+          }}
+        />
+        {/* Vinheta sutil — profundidade e foco no centro da cena */}
+        <AbsoluteFill
+          style={{
+            background:
+              'radial-gradient(120% 120% at 50% 48%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.4) 100%)',
             pointerEvents: 'none',
           }}
         />
       </AbsoluteFill>
-
-      {blackOverlayOpacity > 0 && (
-        <AbsoluteFill style={{ background: '#000', opacity: blackOverlayOpacity }} />
-      )}
 
       {showCaptions && clip.lettering.text.trim() && isLetteringActive && (
         <div
@@ -442,6 +536,10 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
           </div>
         </div>
       )}
+
+      {fadeOverlayOpacity > 0 && (
+        <AbsoluteFill style={{ background: fadeColor, opacity: fadeOverlayOpacity, pointerEvents: 'none' }} />
+      )}
     </AbsoluteFill>
   );
 };
@@ -480,6 +578,7 @@ export const StoryboardComposition: React.FC<StoryboardCompositionProps> = ({
         const next = placements[index + 1];
         const nextTransitionFrames = next ? next.transitionInFrames : 0;
         const nextTransitionType: VideoClipTransition = next ? next.clip.transitionIn : 'cut';
+        const nextTransitionEasing: VideoTransitionEasing = next ? next.clip.transitionEasing : 'ease-in-out';
         return (
           <Sequence
             key={placement.clip.id}
@@ -492,6 +591,7 @@ export const StoryboardComposition: React.FC<StoryboardCompositionProps> = ({
               transitionInFrames={placement.transitionInFrames}
               nextTransitionInFrames={nextTransitionFrames}
               nextTransitionType={nextTransitionType}
+              nextTransitionEasing={nextTransitionEasing}
               showCaptions={showCaptions}
               fps={fps}
             />

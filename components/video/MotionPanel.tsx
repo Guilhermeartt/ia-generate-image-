@@ -4,15 +4,17 @@ import type {
   VideoClipTransition,
   VideoKenBurnsConfig,
   VideoKenBurnsDirection,
+  VideoTransitionEasing,
 } from '@/types';
 import type { StoryboardVideoScene } from './StoryboardComposition';
 import { RangeField } from './VideoStudioControls';
-import { KEN_BURNS_OPTIONS, TRANSITION_OPTIONS } from './videoStudioConstants';
+import { KEN_BURNS_OPTIONS, TRANSITION_EASING_OPTIONS, TRANSITION_OPTIONS } from './videoStudioConstants';
 
 export interface MotionDefaults {
   secondsPerClip: number;
   transition: VideoClipTransition;
   transitionSeconds: number;
+  transitionEasing: VideoTransitionEasing;
   kenBurns: VideoKenBurnsConfig;
 }
 
@@ -21,6 +23,7 @@ interface MotionPanelProps {
   displayDuration: number;
   displayTransition: VideoClipTransition;
   displayTransitionSeconds: number;
+  displayTransitionEasing: VideoTransitionEasing;
   displayKenBurns: VideoKenBurnsConfig;
   defaults: MotionDefaults;
   hasOverride: boolean;
@@ -38,6 +41,7 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
   displayDuration,
   displayTransition,
   displayTransitionSeconds,
+  displayTransitionEasing,
   displayKenBurns,
   defaults,
   hasOverride,
@@ -106,6 +110,20 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
           />
         </div>
       </div>
+      <label className="panel-field-label" htmlFor="video-clip-transition-easing">Easing (entrada/saída)</label>
+      <select
+        id="video-clip-transition-easing"
+        className="field"
+        value={displayTransitionEasing}
+        onChange={(event) => onOverridePatchCommit(
+          { transitionEasing: event.target.value as VideoTransitionEasing },
+          'Easing da transição',
+        )}
+      >
+        {TRANSITION_EASING_OPTIONS.map(option => (
+          <option key={option.id} value={option.id}>{option.label}</option>
+        ))}
+      </select>
 
       <p className="vs-section-title">Ken Burns (pan + zoom)</p>
       <div className="vs-row-2">
@@ -180,17 +198,37 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
           </select>
         </div>
       </div>
-      <RangeField
-        id="vs-default-transition-seconds"
-        label="Duração da transição padrão"
-        min={0}
-        max={2}
-        step={0.05}
-        value={defaults.transitionSeconds}
-        onChange={(value) => onDefaultsPreview({ transitionSeconds: value })}
-        onCommit={(value) => onDefaultsCommit({ transitionSeconds: value }, 'Duração transição padrão')}
-        format={(value) => `${value.toFixed(2)}s`}
-      />
+      <div className="vs-row-2">
+        <div>
+          <RangeField
+            id="vs-default-transition-seconds"
+            label="Duração da transição padrão"
+            min={0}
+            max={2}
+            step={0.05}
+            value={defaults.transitionSeconds}
+            onChange={(value) => onDefaultsPreview({ transitionSeconds: value })}
+            onCommit={(value) => onDefaultsCommit({ transitionSeconds: value }, 'Duração transição padrão')}
+            format={(value) => `${value.toFixed(2)}s`}
+          />
+        </div>
+        <div>
+          <label className="panel-field-label" htmlFor="vs-default-transition-easing">Easing padrão</label>
+          <select
+            id="vs-default-transition-easing"
+            className="field"
+            value={defaults.transitionEasing}
+            onChange={(event) => onDefaultsCommit(
+              { transitionEasing: event.target.value as VideoTransitionEasing },
+              'Easing padrão',
+            )}
+          >
+            {TRANSITION_EASING_OPTIONS.map(option => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="vs-row-2">
         <div>
           <label className="panel-field-label" htmlFor="vs-default-kb-direction">Ken Burns padrão</label>

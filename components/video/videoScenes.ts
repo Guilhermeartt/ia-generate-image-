@@ -4,6 +4,7 @@ import type {
   SceneVideoLettering,
   VideoClipTransition,
   VideoKenBurnsConfig,
+  VideoTransitionEasing,
 } from '@/types';
 import type { StoryboardVideoScene } from './StoryboardComposition';
 
@@ -48,6 +49,27 @@ export const DEFAULT_KEN_BURNS: VideoKenBurnsConfig = {
 
 export const DEFAULT_TRANSITION: VideoClipTransition = 'crossfade';
 export const DEFAULT_TRANSITION_SECONDS = 0.3;
+export const DEFAULT_TRANSITION_EASING: VideoTransitionEasing = 'ease-in-out';
+
+/**
+ * Transições que sobrepõem o clipe anterior ao próximo (os dois ficam visíveis ao
+ * mesmo tempo durante a transição). Fades e corte seco NÃO sobrepõem — fade-black,
+ * por exemplo, precisa que o clipe de saída escureça por completo antes do de entrada
+ * surgir, então eles ficam sequenciais na timeline.
+ */
+export const OVERLAPPING_TRANSITIONS: ReadonlySet<VideoClipTransition> = new Set([
+  'crossfade',
+  'blur',
+  'zoom',
+  'slide-left',
+  'slide-right',
+  'slide-up',
+  'slide-down',
+  'wipe-left',
+  'wipe-right',
+  'wipe-up',
+  'wipe-down',
+]);
 
 export const videoImageSourcesForScene = (scene: Scene): SceneVideoImageSource[] => {
   const sources: SceneVideoImageSource[] = [];
@@ -94,6 +116,7 @@ export interface CreateVideoScenesOptions {
   defaultSecondsPerClip: number;
   defaultTransition: VideoClipTransition;
   defaultTransitionSeconds: number;
+  defaultTransitionEasing: VideoTransitionEasing;
   defaultKenBurns: VideoKenBurnsConfig;
 }
 
@@ -101,6 +124,7 @@ const DEFAULT_OPTIONS: CreateVideoScenesOptions = {
   defaultSecondsPerClip: 3,
   defaultTransition: DEFAULT_TRANSITION,
   defaultTransitionSeconds: DEFAULT_TRANSITION_SECONDS,
+  defaultTransitionEasing: DEFAULT_TRANSITION_EASING,
   defaultKenBurns: DEFAULT_KEN_BURNS,
 };
 
@@ -145,6 +169,7 @@ export const createVideoScenes = (
       const transitionIn = globalClipIndex === 0 ? 'cut' : (override?.transitionIn ?? opts.defaultTransition);
       const transitionDurationSeconds =
         override?.transitionDurationSeconds ?? opts.defaultTransitionSeconds;
+      const transitionEasing = override?.transitionEasing ?? opts.defaultTransitionEasing;
       const lettering =
         override?.lettering
         ?? parentLettering.get(scene.scene_id)
@@ -166,6 +191,7 @@ export const createVideoScenes = (
         kenBurns,
         transitionIn,
         transitionDurationSeconds,
+        transitionEasing,
         hasOverride: Boolean(override),
         parentSceneOffsetSeconds: 0,
         parentSceneDurationSeconds: 0,
@@ -192,23 +218,42 @@ export interface TimelineClipPlacement {
   clip: StoryboardVideoScene;
   startFrame: number;
   durationFrames: number;
+  /** Duração da animação da transição de entrada, em frames (independe do overlap). */
   transitionInFrames: number;
+  /** Quanto este clipe sobrepõe o anterior na timeline, em frames. */
+  overlapFrames: number;
 }
 
-/** Posiciona cada clipe na timeline considerando overlap das transições. */
+/**
+ * Posiciona cada clipe na timeline.
+ *
+ * Distingue dois conceitos que antes estavam unidos (causando transições quebradas):
+ * - `transitionInFrames`: por quanto tempo a animação de entrada roda. Usado para
+ *   animar tanto a entrada do clipe quanto a saída do clipe anterior.
+ * - `overlapFrames`: por quanto o clipe é puxado para cima do anterior. Apenas
+ *   transições sobrepostas (crossfade, slide, wipe, zoom, blur) recuam o início;
+ *   fades e corte seco ficam sequenciais.
+ */
 export const placeClipsOnTimeline = (
   clips: StoryboardVideoScene[],
   fps: number,
 ): { placements: TimelineClipPlacement[]; totalFrames: number } => {
   const placements: TimelineClipPlacement[] = [];
   let cursor = 0;
+  let prevDurationFrames = 0;
   clips.forEach((clip, index) => {
     const durationFrames = Math.max(1, Math.round(clip.durationSeconds * fps));
-    const transitionInFrames = Math.max(0, Math.round(clip.transitionDurationSeconds * fps));
-    const overlap = index === 0 || clip.transitionIn === 'cut' ? 0 : transitionInFrames;
-    const startFrame = Math.max(0, cursor - overlap);
-    placements.push({ clip, startFrame, durationFrames, transitionInFrames: overlap });
+    const transitionInFrames =
+      index === 0 || clip.transitionIn === 'cut'
+        ? 0
+        : Math.max(0, Math.round(clip.transitionDurationSeconds * fps));
+    const overlapFrames = OVERLAPPING_TRANSITIONS.has(clip.transitionIn)
+      ? Math.min(transitionInFrames, prevDurationFrames)
+      : 0;
+    const startFrame = Math.max(0, cursor - overlapFrames);
+    placements.push({ clip, startFrame, durationFrames, transitionInFrames, overlapFrames });
     cursor = startFrame + durationFrames;
+    prevDurationFrames = durationFrames;
   });
   return { placements, totalFrames: Math.max(1, cursor) };
 };
