@@ -100,10 +100,15 @@ function main() {
     console.log('Abra esta URL no navegador para redefinir a senha:');
     console.log(`  ${url}`);
     console.log('');
-    console.log('Ou faça POST direto (substitua NOVA_SENHA):');
+    console.log('Ou faça POST headless (resolve o CSRF double-submit cookie):');
+    console.log(`  curl -sS -c /tmp/vy.cookies '${publicUrl}/api/health' > /dev/null`);
+    console.log(`  CSRF=$(awk '$6=="csrf_token"{print $7}' /tmp/vy.cookies)`);
     console.log(`  curl -X POST '${publicUrl}/api/auth/password/reset' \\`);
     console.log(`    -H 'Content-Type: application/json' \\`);
+    console.log(`    -H "x-csrf-token: $CSRF" \\`);
+    console.log(`    -b /tmp/vy.cookies \\`);
     console.log(`    -d '{"resetToken":"${rawToken}","password":"NOVA_SENHA"}'`);
+    console.log(`  rm -f /tmp/vy.cookies`);
     console.log('');
     console.log(`Auditoria gravada em: ${auditFile}`);
   } finally {
