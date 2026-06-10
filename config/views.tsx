@@ -2,7 +2,7 @@ import React from 'react';
 import { CostReportIcon } from '@/components/icons';
 
 /** View principal da área de produção (projeto analisado). */
-export type AppView = 'characters' | 'scenes' | 'video' | 'costs';
+export type AppView = 'characters' | 'scenes' | 'svg-editor' | 'video' | 'costs';
 
 export interface AppViewDef {
   id: AppView;
@@ -50,6 +50,21 @@ export const APP_VIEWS: AppViewDef[] = [
         <line x1="7" y1="2" x2="7" y2="22"/>
         <line x1="17" y1="2" x2="17" y2="22"/>
         <line x1="2" y1="12" x2="22" y2="12"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'svg-editor',
+    slug: 'editor-svg',
+    label: 'Editor SVG',
+    breadcrumb: 'Editor SVG',
+    shortLabel: 'SVG',
+    icon: (
+      <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 20 20 4"/>
+        <path d="M7 4h13v13"/>
+        <circle cx="6" cy="18" r="2"/>
+        <circle cx="18" cy="6" r="2"/>
       </svg>
     ),
   },
