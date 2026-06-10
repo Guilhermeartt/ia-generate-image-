@@ -42,7 +42,7 @@ const Topbar: React.FC<TopbarProps> = ({
   <header className="topbar">
     {/* Breadcrumb */}
     <div style={{flex:1,display:'flex',alignItems:'center',gap:6,minWidth:0}}>
-      {isDone ? (
+      {isDone || activeView === 'svg-editor' ? (
         <>
           <span style={{fontSize:11,color:'var(--text-4)',whiteSpace:'nowrap'}}>Estúdio Visual</span>
           <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{color:'var(--text-4)',flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>

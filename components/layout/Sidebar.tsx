@@ -80,6 +80,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const viewCounts: Record<AppView, number | null> = {
     characters: characterCount,
     scenes: sceneCount,
+    'svg-editor': null,
     video: null,
     costs: null,
   };
@@ -131,6 +132,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           <UploadIcon width={15} height={15} />
           Importar CSV/DOCX
         </button>
+        <button
+          className={`sidebar-item${activeView === 'svg-editor' ? ' active' : ''}`}
+          onClick={() => onNavigate('svg-editor')}
+        >
+          {APP_VIEWS.find((view) => view.id === 'svg-editor')?.icon}
+          Editor SVG
+        </button>
         <input
           ref={csvInputRef}
           type="file"
@@ -146,7 +154,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {isDone && (
           <>
             <span className="sidebar-label" style={{marginTop:8}}>Produção</span>
-            {APP_VIEWS.map((item) => (
+            {APP_VIEWS.filter((item) => item.id !== 'svg-editor').map((item) => (
               <button key={item.id} onClick={() => onNavigate(item.id)} className={`sidebar-item${activeView === item.id ? ' active' : ''}`}>
                 {item.icon}
                 <span style={{flex:1}}>{item.label}</span>

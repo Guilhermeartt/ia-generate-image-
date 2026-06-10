@@ -46,6 +46,7 @@ import type { ProjectImageItem } from './components/ProjectGalleryModal';
 const ProjectGalleryModal = lazy(() => import('./components/ProjectGalleryModal'));
 const CostReportView = lazy(() => import('./components/CostReportView'));
 const VideoStudio = lazy(() => import('./components/video/VideoStudio'));
+const SvgEditor = lazy(() => import('./components/svg-editor/SvgEditor'));
 import { getStoredApiKey } from './services/geminiService';
 import AuthModal from './components/AuthModal';
 import AccountModal from './components/AccountModal';
@@ -1599,7 +1600,13 @@ REGRAS ESTRITAS:
         />
 
         <main style={{ flex: 1, padding: 0, overflowY: 'auto' }}>
-          {!file && (
+          {activeView === 'svg-editor' && (
+            <Suspense fallback={<Loader message="Carregando editor SVG…" />}>
+              <SvgEditor />
+            </Suspense>
+          )}
+
+          {!file && activeView !== 'svg-editor' && (
             <div className="workspace-shell anim-up">
               <CreditAlert
                 user={currentUser}
@@ -1832,7 +1839,7 @@ REGRAS ESTRITAS:
             </div>
           )}
 
-          {processingState === 'done' && showAnalysisReport && (
+          {activeView !== 'svg-editor' && processingState === 'done' && showAnalysisReport && (
             <Suspense fallback={<Loader message="Carregando relatório…" />}>
               <AnalysisReportView
                 characters={characters}
@@ -1845,7 +1852,7 @@ REGRAS ESTRITAS:
             </Suspense>
           )}
 
-          {processingState === 'done' && !showAnalysisReport && (
+          {activeView !== 'svg-editor' && processingState === 'done' && !showAnalysisReport && (
             <div className="results-shell">
               <div className="results-summary">
                 <div className="summary-tile">

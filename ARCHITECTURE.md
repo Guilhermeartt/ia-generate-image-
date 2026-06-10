@@ -46,6 +46,7 @@ projeto/
 │
 ├── components/             # componentes (flat — ver "Alvo" abaixo)
 │   ├── layout/             # Sidebar, Topbar, MobileBottomNav (navegação)
+│   ├── svg-editor/         # editor vetorial SVG nativo (ver SVG_EDITOR.md)
 │   └── video/              # composição Remotion e estúdio de preview
 ├── hooks/                  # lógica de estado reutilizável (useScenes, useCharacters…)
 │   └── useNavigation.ts    # view ativa, hash da URL (#/cenas), painéis
@@ -91,6 +92,9 @@ projeto/
   registry e o bloco de conteúdo correspondente em `App.tsx`. Navegação do
   usuário usa `navigateTo` (empilha histórico → voltar/avançar funciona);
   mudanças programáticas usam `setActiveView` (substitui o hash).
+- **Editor SVG**: arquitetura, segurança de upload, estado do MVP e roteiro de
+  continuidade ficam em `SVG_EDITOR.md`. Esse documento deve ser atualizado
+  durante a implementação, não apenas ao concluir um marco.
 
 ## Qualidade — comandos
 

@@ -19,7 +19,9 @@ interface UseNavigationOptions {
  * projeto, reset) apenas substituem o hash.
  */
 export function useNavigation({ syncHash }: UseNavigationOptions) {
-  const [activeView, setActiveView] = useState<AppView>('characters');
+  const [activeView, setActiveView] = useState<AppView>(() =>
+    viewFromHash(window.location.hash) === 'svg-editor' ? 'svg-editor' : 'characters',
+  );
   const [scenesViewMode, setScenesViewMode] = useState<ScenesViewMode>('cards');
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showAnalysisReport, setShowAnalysisReport] = useState(false);
@@ -27,7 +29,7 @@ export function useNavigation({ syncHash }: UseNavigationOptions) {
   const navigateTo = useCallback(
     (view: AppView) => {
       setActiveView(view);
-      if (syncHash && window.location.hash !== hashForView(view)) {
+      if ((syncHash || view === 'svg-editor') && window.location.hash !== hashForView(view)) {
         window.location.hash = hashForView(view);
       }
     },
@@ -38,18 +40,27 @@ export function useNavigation({ syncHash }: UseNavigationOptions) {
 
   // Voltar/avançar do navegador (ou hash editado manualmente).
   useEffect(() => {
-    if (!syncHash) return;
     const onHashChange = () => {
       const view = viewFromHash(window.location.hash);
-      if (view) setActiveView(view);
+      if (view && (syncHash || view === 'svg-editor')) {
+        setActiveView(view);
+      } else if (!syncHash && activeView === 'svg-editor') {
+        setActiveView('characters');
+      }
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, [syncHash]);
+  }, [activeView, syncHash]);
 
   // Mantém o hash espelhando a view ativa sem poluir o histórico.
   useEffect(() => {
     if (!syncHash) {
+      if (activeView === 'svg-editor') {
+        if (window.location.hash !== hashForView(activeView)) {
+          history.replaceState(null, '', hashForView(activeView));
+        }
+        return;
+      }
       // Projeto fechado: hash de view não faz mais sentido.
       if (viewFromHash(window.location.hash)) {
         history.replaceState(null, '', window.location.pathname + window.location.search);

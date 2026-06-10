@@ -24,15 +24,15 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onNavigate,
 }) => (
   <nav className="mobile-bottom-nav" aria-label="Navegação principal mobile">
-    <button className={!hasFile ? 'active' : ''} onClick={onHome}>
+    <button className={!hasFile && activeView !== 'svg-editor' ? 'active' : ''} onClick={onHome}>
       <SparklesIcon width={15} height={15} />
       Início
     </button>
     {APP_VIEWS.map((item) => (
       <button
         key={item.id}
-        className={isDone && activeView === item.id ? 'active' : ''}
-        disabled={!isDone}
+        className={(isDone || item.id === 'svg-editor') && activeView === item.id ? 'active' : ''}
+        disabled={!isDone && item.id !== 'svg-editor'}
         onClick={() => onNavigate(item.id)}
       >
         {item.icon}
