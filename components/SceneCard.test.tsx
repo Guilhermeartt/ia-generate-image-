@@ -106,4 +106,43 @@ describe('SceneCard (render)', () => {
     fireEvent.click(checkbox);
     expect(props.onContinuationChange).toHaveBeenCalledWith(scene.id, false);
   });
+
+  it('renderiza marcadores [Nome] como <strong> sem injetar HTML', () => {
+    const scene = makeScene({
+      tagged_description: '[Maria] grita "<script>alert(1)</script>" para [Paulo].',
+    });
+    const { container } = render(<SceneCard {...makeProps(scene)} />);
+    // O script bruto não deve criar elemento real
+    expect(container.querySelector('script')).toBeNull();
+    // Mas a marcação visual deve estar lá
+    const strongs = container.querySelectorAll('.sc-description strong');
+    expect(strongs.length).toBe(2);
+    expect(strongs[0].textContent).toBe('[Maria]');
+    expect(strongs[1].textContent).toBe('[Paulo]');
+  });
+
+  it('exibe erro categorizado com CTA específico para falta de créditos', () => {
+    const scene = makeScene({ error: 'Sem créditos suficientes para gerar' });
+    render(<SceneCard {...makeProps(scene)} />);
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toMatch(/Sem créditos/i);
+    expect(screen.getByRole('button', { name: /Comprar créditos/i })).toBeDisabled();
+  });
+
+  it('mostra um CTA de tentar novamente quando o erro é de rede', () => {
+    const scene = makeScene({ error: 'fetch failed: network error' });
+    render(<SceneCard {...makeProps(scene)} />);
+    expect(screen.getByText(/Erro de conexão/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Tentar novamente/i })).not.toBeDisabled();
+  });
+
+  it('abre o modal de comparação quando há versão anterior e usuário clica em Comparar', () => {
+    const scene = makeScene({
+      imageUrl: 'data:image/png;base64,current',
+      previousImageUrl: 'data:image/png;base64,previous',
+    });
+    render(<SceneCard {...makeProps(scene)} />);
+    fireEvent.click(screen.getByRole('button', { name: /Comparar com versão anterior/i }));
+    expect(screen.getByRole('dialog', { name: /Comparar versões/i })).toBeInTheDocument();
+  });
 });

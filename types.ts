@@ -160,7 +160,66 @@ export type SceneReferenceKind = 'spatial' | 'object' | 'screen';
 
 export type VideoLetteringPosition = 'top' | 'center' | 'bottom';
 export type VideoLetteringAlign = 'left' | 'center' | 'right';
-export type VideoLetteringStyle = 'cinematic' | 'box' | 'clean';
+export type VideoLetteringStyle =
+  | 'cinematic'
+  | 'box'
+  | 'clean'
+  | 'title'
+  | 'lower-third'
+  | 'glass'
+  | 'neon'
+  | 'subtitle'
+  | 'marker'
+  | 'gradient'
+  | 'outline';
+export type VideoLetteringEnterAnimation =
+  | 'fade'
+  | 'slide-up'
+  | 'slide-left'
+  | 'zoom'
+  | 'none'
+  | 'typewriter'
+  | 'blur-in'
+  | 'bounce'
+  | 'pop'
+  | 'glitch'
+  | 'rise';
+export type VideoLetteringExitAnimation =
+  | 'fade'
+  | 'slide-down'
+  | 'slide-right'
+  | 'zoom'
+  | 'none'
+  | 'blur-out'
+  | 'pop-out'
+  | 'swipe-out'
+  | 'dissolve';
+
+/** Tipo de transição visual entre dois clipes consecutivos. */
+export type VideoClipTransition =
+  | 'cut'
+  | 'crossfade'
+  | 'fade-black'
+  | 'slide-left'
+  | 'slide-up'
+  | 'wipe-left';
+
+/** Direção do efeito Ken Burns (pan + zoom) aplicado à imagem do clipe. */
+export type VideoKenBurnsDirection =
+  | 'none'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'pan-left'
+  | 'pan-right'
+  | 'pan-up'
+  | 'pan-down';
+
+/** Configuração do efeito Ken Burns por clipe. */
+export interface VideoKenBurnsConfig {
+  direction: VideoKenBurnsDirection;
+  /** Intensidade 0..1 — escala alvo no fim do clipe (1.0 = sem zoom; 1.1 = +10%). */
+  intensity: number;
+}
 
 /** Texto sobreposto à cena na composição de vídeo Remotion. */
 export interface SceneVideoLettering {
@@ -170,6 +229,55 @@ export interface SceneVideoLettering {
   style: VideoLetteringStyle;
   fontSize: number;
   color: string;
+  /** Tempo relativo ao início da cena-pai, atravessando todos os seus planos. */
+  startSeconds?: number;
+  /** Tempo relativo ao início da cena-pai. Ausente mantém até o fim da cena. */
+  endSeconds?: number;
+  enterAnimation?: VideoLetteringEnterAnimation;
+  exitAnimation?: VideoLetteringExitAnimation;
+  enterDurationSeconds?: number;
+  exitDurationSeconds?: number;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
+  fontWeight?: number;
+  letterSpacing?: number;
+  borderRadius?: number;
+  /** Opacidade do próprio texto (0..1). */
+  textOpacity?: number;
+}
+
+/** Override de configuração por clipe individual (uma imagem do vídeo). */
+export interface SceneVideoClipOverride {
+  /** Imagem alvo: `main`, `split:<id>` ou `end`. */
+  sourceId: string;
+  /** Duração específica deste clipe em segundos. */
+  durationSeconds?: number;
+  /** Transição usada para entrar neste clipe (cobre o final do clipe anterior). */
+  transitionIn?: VideoClipTransition;
+  /** Duração da transição em segundos. */
+  transitionDurationSeconds?: number;
+  /** Ken Burns específico deste clipe. */
+  kenBurns?: VideoKenBurnsConfig;
+  /** Lettering específico deste clipe — sobrescreve o da cena-pai. */
+  lettering?: SceneVideoLettering;
+}
+
+/** Trilha de áudio sobreposta ao vídeo inteiro. */
+export interface VideoAudioTrack {
+  /** Identificador estável (file name ou nanoid). */
+  id: string;
+  /** Rótulo amigável exibido na UI. */
+  label: string;
+  /** Source URL ou data URL. */
+  src: string;
+  /** Volume 0..1. */
+  volume: number;
+  /** Offset em segundos do início do vídeo. */
+  startOffsetSeconds?: number;
+  /** Fade in em segundos. */
+  fadeInSeconds?: number;
+  /** Fade out em segundos. */
+  fadeOutSeconds?: number;
 }
 
 /** Referência visual persistente anexada a uma cena (objeto, logo, imagem externa, screenshot…). */
@@ -260,6 +368,26 @@ export interface Scene {
    * Ausente preserva o comportamento legado: usar apenas a imagem principal.
    */
   videoImageSourceIds?: string[];
+  /** Overrides por clipe (duração, Ken Burns, transição, lettering individual). */
+  videoClipOverrides?: SceneVideoClipOverride[];
+}
+
+/** Configuração global do estúdio de vídeo do storyboard. */
+export interface VideoStudioConfig {
+  /** Duração padrão por clipe quando não há override. */
+  defaultSecondsPerClip: number;
+  /** Mostrar lettering no preview. */
+  showCaptions: boolean;
+  /** Aspect ratio efetivo do preview ("16:9", "9:16", etc.). */
+  aspectRatio: string;
+  /** Transição global padrão (pode ser sobrescrita por clipe). */
+  defaultTransition: VideoClipTransition;
+  /** Duração padrão da transição em segundos. */
+  defaultTransitionSeconds: number;
+  /** Ken Burns padrão (pode ser sobrescrito por clipe). */
+  defaultKenBurns: VideoKenBurnsConfig;
+  /** Trilha de áudio opcional. */
+  audio?: VideoAudioTrack;
 }
 
 // fix: Add SavedAnalysis interface definition.

@@ -111,4 +111,54 @@ describe('createVideoScenes', () => {
       color: '#ffcc00',
     });
   });
+
+  it('shares one lettering timeline across sub-scenes with the same parent scene id', () => {
+    const result = createVideoScenes([
+      scene(1, {
+        id: 11,
+        scene_id: 5,
+        sub_id: 1,
+        imageUrl: 'data:image/png;base64,first',
+      }),
+      scene(2, {
+        id: 12,
+        scene_id: 5,
+        sub_id: 2,
+        imageUrl: 'data:image/png;base64,second',
+        lettering_notes: ['TEXTO CONTÍNUO'],
+      }),
+    ]);
+
+    expect(result.map(item => item.parentSceneClipIndex)).toEqual([0, 1]);
+    expect(result.map(item => item.parentSceneClipCount)).toEqual([2, 2]);
+    expect(result.map(item => item.lettering.text)).toEqual(['TEXTO CONTÍNUO', 'TEXTO CONTÍNUO']);
+  });
+
+  it('uses the saved parent lettering in every sub-scene', () => {
+    const sharedLettering = {
+      ...defaultLetteringForScene(scene(1)),
+      text: 'MESMO LETTERING',
+      startSeconds: 1,
+      endSeconds: 5,
+      enterAnimation: 'zoom' as const,
+    };
+    const result = createVideoScenes([
+      scene(1, {
+        id: 21,
+        scene_id: 7,
+        sub_id: 1,
+        imageUrl: 'data:image/png;base64,first',
+        videoLettering: sharedLettering,
+      }),
+      scene(2, {
+        id: 22,
+        scene_id: 7,
+        sub_id: 2,
+        imageUrl: 'data:image/png;base64,second',
+      }),
+    ]);
+
+    expect(result[0].lettering).toEqual(sharedLettering);
+    expect(result[1].lettering).toEqual(sharedLettering);
+  });
 });

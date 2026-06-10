@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { Character, Scene, SceneReference } from '../types';
-import { EditIcon, SparklesIcon, DownloadIcon, RevertIcon, TextAnalysisIcon } from './icons';
-import ImageLoader from './ImageLoader';
+import { SparklesIcon } from './icons';
 import ImageEditModal from './ImageEditModal';
 import SceneReferencesPanel from './SceneReferencesPanel';
 import SceneSplitModal from './SceneSplitModal';
@@ -14,9 +13,7 @@ import {
 } from '../utils/promptModules';
 import ShotTypeSelector from './ShotTypeSelector';
 import CameraPositionControl from './CameraPositionControl';
-import { aspectRatioLabel, modelLabelShort } from '../utils/imageHelpers';
 import Spinner from './ui/Spinner';
-import ImgBtn from './ui/ImgBtn';
 import SceneCharacterTags from './SceneCharacterTags';
 import SceneLettering from './SceneLettering';
 import SceneContinuation from './SceneContinuation';
@@ -25,7 +22,18 @@ import SceneActionButtons from './SceneActionButtons';
 import SceneSplitGrid from './SceneSplitGrid';
 import SceneReferencePanel from './SceneReferencePanel';
 import SceneGenerationChecklist from './SceneGenerationChecklist';
-import { CREATIVE_DIRECTION_SUGGESTIONS } from './sceneCard.constants';
+import { REMOVE_ALL_VISUAL_PROMPT } from './sceneCard.constants';
+import SafeTaggedDescription from './scene-card/SafeTaggedDescription';
+import SceneCardHeader from './scene-card/SceneCardHeader';
+import SceneCardCostStrip from './scene-card/SceneCardCostStrip';
+import SceneCardImagePanel from './scene-card/SceneCardImagePanel';
+import SceneCardEndFramePanel from './scene-card/SceneCardEndFramePanel';
+import SceneCardRefinementPanel from './scene-card/SceneCardRefinementPanel';
+import SceneCardCompareModal from './scene-card/SceneCardCompareModal';
+import SceneCardCreativeModal from './scene-card/SceneCardCreativeModal';
+import { useEditImageOperation, type EditImageService } from './scene-card/useEditImageOperation';
+import { useSceneCardShortcuts } from './scene-card/useSceneCardShortcuts';
+import { initialSceneCardState, sceneCardReducer } from './scene-card/sceneCardState';
 
 interface SceneCardProps {
   scene: Scene;
@@ -36,7 +44,7 @@ interface SceneCardProps {
   onImageUpdate: (id: number, newImageUrl: string, newMimeType: string) => void;
   onVisualize: (id: number) => void;
   onVisualizeWithReference: (id: number, prompt: string, croppedBase64: string | null, croppedMimeType: string | null, extraReferences?: { base64Data: string; mimeType: string }[], blendInstruction?: string) => void;
-  editImageService: (base64: string, prompt: string) => Promise<{ base64Data: string, mimeType: string }>;
+  editImageService: EditImageService;
   onPreview: (url: string) => void;
   onPromptChange: (id: number, newPrompt: string) => void;
   onStyleChange: (id: number, newStyle: string) => void;
@@ -62,63 +70,65 @@ interface SceneCardProps {
   onSceneReferencesChange?: (id: number, updater: (current: SceneReference[] | undefined) => SceneReference[] | undefined) => void;
 }
 
+const sceneArePropsEqual = (prev: SceneCardProps, next: SceneCardProps) => (
+  prev.scene === next.scene
+  && prev.characters === next.characters
+  && prev.sceneIndex === next.sceneIndex
+  && prev.scenes === next.scenes
+  && prev.availableStyles === next.availableStyles
+);
 
+const SceneCard: React.FC<SceneCardProps> = (props) => {
+  const {
+    scene, scenes, characters, sceneIndex,
+    onImageUpdate, onVisualize, onVisualizeWithReference, editImageService,
+    onPreview, onPromptChange, onStyleChange, onContinuationChange,
+    onSceneVisualStyleChange, onSceneCameraPositionChange, onSceneCharacterEdit,
+    onContinuationReferenceChange, onUpdatePrompt, onRecreatePrompt, onRevertImage,
+    onAnalyzeText, onEditRegion, onSplitScene, onClearSplit,
+    onApplyAlternativePrompt, onApplySplitSuggestion,
+    onGenerateEndFrame, onUpdateSplitImage,
+    onOpenGraphicStyle, onClearGraphicStyle,
+    onIncludeLetteringChange, onSceneReferencesChange,
+  } = props;
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [state, dispatch] = useReducer(sceneCardReducer, initialSceneCardState);
 
-/* ── Spinner ──────────────────────────────────────────────────── */
-/* ── Main component ───────────────────────────────────────────── */
-const SceneCard: React.FC<SceneCardProps> = ({
-  scene, scenes, characters, sceneIndex,
-  onImageUpdate, onVisualize, onVisualizeWithReference, editImageService,
-  onPreview, onPromptChange, onStyleChange, onContinuationChange,
-  onSceneVisualStyleChange, onSceneCameraPositionChange, onSceneCharacterEdit, onContinuationReferenceChange, onUpdatePrompt, onRecreatePrompt, onRevertImage, onAnalyzeText, onEditRegion,
-  onSplitScene, onClearSplit,
-  onApplyAlternativePrompt, onApplySplitSuggestion,
-  onGenerateEndFrame,
-  onUpdateSplitImage,
-  onOpenGraphicStyle,
-  onClearGraphicStyle,
-  onIncludeLetteringChange,
-  onSceneReferencesChange,
-}) => {
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editState, setEditState]             = useState<{ isLoading: boolean; error: string | null }>({ isLoading: false, error: null });
-  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
-  const [showRefinement, setShowRefinement]     = useState(false);
-  const [isCameraControlOpen, setIsCameraControlOpen] = useState(false);
-  const [editingSplit, setEditingSplit]          = useState<{ id: string; imageUrl: string } | null>(null);
-  const [splitEditState, setSplitEditState]      = useState<{ isLoading: boolean; error: string | null }>({ isLoading: false, error: null });
+  const editImage = useEditImageOperation({
+    editImageService,
+    sceneId: scene.id,
+    imageUrl: scene.imageUrl,
+    onImageUpdate,
+    onSuccess: () => dispatch({ type: 'CLOSE_EDIT' }),
+  });
 
-  // ── Inline reference panel (conteúdo extraído em SceneReferencePanel) ──────
-  const [isRefPanelOpen, setIsRefPanelOpen] = useState(false);
+  const splitEditImage = useEditImageOperation({
+    editImageService,
+    sceneId: scene.id,
+    imageUrl: state.editingSplit?.imageUrl,
+    onImageUpdate: (sceneId, newUrl, mime) => {
+      if (state.editingSplit) {
+        onUpdateSplitImage?.(sceneId, state.editingSplit.id, newUrl, mime);
+      }
+    },
+    onSuccess: () => dispatch({ type: 'STOP_EDITING_SPLIT' }),
+  });
 
-  // ── Recriar direção criativa do prompt ──────────────────────────────────────
-  const [isCreativeOpen, setIsCreativeOpen] = useState(false);
-  const [creativeDirection, setCreativeDirection] = useState('');
-  const [isRecreatingCreative, setIsRecreatingCreative] = useState(false);
-  const creativePromptBusy = scene.isUpdatingPrompt || isRecreatingCreative;
+  const isBusy = scene.isLoading || scene.isAnalyzingText || editImage.isLoading;
+  const busyMessage = scene.isLoading
+    ? 'Gerando imagem…'
+    : scene.isAnalyzingText
+      ? 'Analisando texto…'
+      : editImage.isLoading
+        ? 'Editando imagem…'
+        : '';
 
-  const handleRecreatePromptClick = async () => {
-    const dir = creativeDirection.trim();
-    if (!dir || !onRecreatePrompt || creativePromptBusy) return;
-
-    setIsRecreatingCreative(true);
-    try {
-      await Promise.resolve(onRecreatePrompt(scene.id, dir));
-      setCreativeDirection('');
-      setIsCreativeOpen(false);
-    } finally {
-      setIsRecreatingCreative(false);
+  // ── Reference data (memoized) ─────────────────────────────────────
+  const referenceData = useMemo(() => {
+    if (!scene.isContinuation) {
+      return { isValid: true, isImageMissing: false, identifier: '' as string | number, referenceScene: undefined as Scene | undefined };
     }
-  };
-
-
-  // ── Persistent scene references (used by SceneReferencesPanel) ──
-  const sceneReferences = scene.references ?? [];
-  const isSceneRefBusy = scene.isLoading || scene.isAnalyzingText || editState.isLoading;
-
-  const getReferenceSceneData = () => {
-    if (!scene.isContinuation) return { isValid: true, isImageMissing: false, identifier: '', referenceScene: undefined as Scene | undefined };
     let referenceScene: Scene | undefined;
     let isValid = true;
     let identifier: string | number = '';
@@ -136,417 +146,91 @@ const SceneCard: React.FC<SceneCardProps> = ({
     }
     const isImageMissing = !!(isValid && referenceScene && !referenceScene.imageUrl);
     return { isValid, isImageMissing, identifier, referenceScene };
-  };
+  }, [scene.isContinuation, scene.continuationReferenceId, scene.order, scenes, sceneIndex]);
 
-  const referenceSceneData = getReferenceSceneData();
-  const cameraRelation = [
-    scene.prompt_json?.camera?.relation_to_subject,
-    scene.prompt_json?.camera?.framing,
-    scene.image_prompt,
-  ].filter(Boolean).join(' ').toLowerCase();
-  const selectedCameraPosition = (
-    CAMERA_POSITION_OPTIONS.find(option => cameraRelation.includes(option.relation.toLowerCase()))?.id || ''
-  ) as CameraPositionId | '';
-  const selectedCameraHeight = (
-    CAMERA_HEIGHT_OPTIONS.find(option => cameraRelation.includes(option.relation.toLowerCase()))?.id || ''
-  ) as CameraHeightId | '';
-  const selectedCameraPositionLabel = CAMERA_POSITION_OPTIONS.find(option => option.id === selectedCameraPosition)?.label;
-  const selectedCameraHeightLabel = CAMERA_HEIGHT_OPTIONS.find(option => option.id === selectedCameraHeight)?.label;
-  const cameraPositionSummary = [
-    selectedCameraPositionLabel,
-    selectedCameraHeightLabel,
-  ].filter(Boolean).join(' · ') || 'Sem posição definida';
-  const isBusy = scene.isLoading || scene.isAnalyzingText || editState.isLoading;
+  // ── Camera summary (memoized) ─────────────────────────────────────
+  const cameraSummary = useMemo(() => {
+    const cameraRelation = [
+      scene.prompt_json?.camera?.relation_to_subject,
+      scene.prompt_json?.camera?.framing,
+      scene.image_prompt,
+    ].filter(Boolean).join(' ').toLowerCase();
+    const selectedCameraPosition = (
+      CAMERA_POSITION_OPTIONS.find(option => cameraRelation.includes(option.relation.toLowerCase()))?.id || ''
+    ) as CameraPositionId | '';
+    const selectedCameraHeight = (
+      CAMERA_HEIGHT_OPTIONS.find(option => cameraRelation.includes(option.relation.toLowerCase()))?.id || ''
+    ) as CameraHeightId | '';
+    const positionLabel = CAMERA_POSITION_OPTIONS.find(o => o.id === selectedCameraPosition)?.label;
+    const heightLabel = CAMERA_HEIGHT_OPTIONS.find(o => o.id === selectedCameraHeight)?.label;
+    return {
+      position: selectedCameraPosition,
+      height: selectedCameraHeight,
+      summary: [positionLabel, heightLabel].filter(Boolean).join(' · ') || 'Sem posição definida',
+    };
+  }, [scene.prompt_json?.camera?.relation_to_subject, scene.prompt_json?.camera?.framing, scene.image_prompt]);
 
-  let busyMessage = '';
-  if (scene.isLoading) busyMessage = 'Gerando imagem…';
-  else if (scene.isAnalyzingText) busyMessage = 'Analisando texto…';
-  else if (editState.isLoading) busyMessage = 'Editando imagem…';
-
-  const handleConfirmEdit = async (prompt: string) => {
-    if (!scene.imageUrl) return;
-    setEditState({ isLoading: true, error: null });
-    try {
-      const { base64Data, mimeType } = await editImageService(scene.imageUrl, prompt);
-      onImageUpdate(scene.id, `data:${mimeType};base64,${base64Data}`, mimeType);
-      setIsEditModalOpen(false);
-      setEditState({ isLoading: false, error: null });
-    } catch (e) {
-      setEditState({ isLoading: false, error: e instanceof Error ? e.message : 'Falha ao editar.' });
-    }
-  };
-
-  const handleDownload = () => {
+  const handleDownload = useCallback(() => {
     if (!scene.imageUrl) return;
     const link = document.createElement('a');
     link.href = scene.imageUrl;
     link.download = `Cena_${scene.scene_id}-${scene.sub_id}.${scene.imageMimeType?.split('/')[1] || 'png'}`;
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
-  };
+  }, [scene.imageUrl, scene.imageMimeType, scene.scene_id, scene.sub_id]);
 
-  const handleRemoveVisualElements = async (instruction: string) => {
-    if (!scene.imageUrl) return;
-    setEditState({ isLoading: true, error: null });
-    try {
-      const prompt = `${instruction} Preserve a cena, personagens, enquadramento, iluminação, estilo visual, cores, profundidade e atmosfera. Preencha a área removida de forma natural, fotorrealista e coerente com o ambiente. Não adicione novos textos, logos, gráficos, interfaces ou elementos editoriais.`;
-      const { base64Data, mimeType } = await editImageService(scene.imageUrl, prompt);
-      onImageUpdate(scene.id, `data:${mimeType};base64,${base64Data}`, mimeType);
-      setEditState({ isLoading: false, error: null });
-    } catch (e) {
-      setEditState({ isLoading: false, error: e instanceof Error ? e.message : 'Falha ao remover elementos da imagem.' });
-    }
-  };
+  const handleRemoveAllVisualElements = useCallback(async () => {
+    const prompt = `${REMOVE_ALL_VISUAL_PROMPT} Preserve a cena, personagens, enquadramento, iluminação, estilo visual, cores, profundidade e atmosfera. Preencha a área removida de forma natural, fotorrealista e coerente com o ambiente. Não adicione novos textos, logos, gráficos, interfaces ou elementos editoriais.`;
+    await editImage.run(prompt);
+  }, [editImage]);
 
-  /* ── Image panel ────────────────────────────────────────────── */
-  const renderImagePanel = () => {
-    if (scene.imageUrl) {
-      return (
-        <div className="img-group" style={{ position: 'relative', width: '100%', height: '100%', minHeight: 200 }}>
-          <button
-            onClick={() => onPreview(scene.imageUrl!)}
-            style={{ display: 'block', width: '100%', height: '100%', border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
-          >
-            <img
-              src={scene.imageUrl}
-              alt={`Cena ${scene.original_location}`}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'transform .4s ease' }}
-            />
-          </button>
+  const handleRecreatePromptSubmit = useCallback(async (direction: string) => {
+    if (!onRecreatePrompt) return;
+    await Promise.resolve(onRecreatePrompt(scene.id, direction));
+    dispatch({ type: 'CLOSE_CREATIVE' });
+  }, [onRecreatePrompt, scene.id]);
 
-          {isBusy && <ImageLoader message={busyMessage} />}
+  // ── Keyboard shortcuts ─────────────────────────────────────────
+  useSceneCardShortcuts({
+    cardRef,
+    enabled: !isBusy,
+    onGenerate: scene.imageUrl ? undefined : () => onVisualize(scene.id),
+    onEdit: scene.imageUrl ? () => dispatch({ type: 'OPEN_EDIT' }) : undefined,
+    onDownload: scene.imageUrl ? handleDownload : undefined,
+    onRecreatePrompt: onRecreatePrompt ? () => dispatch({ type: 'OPEN_CREATIVE' }) : undefined,
+  });
 
-          {/* Gradient overlay */}
-          <div className="img-overlay" />
-
-          {/* Top-left: status + cost */}
-          <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 5, alignItems: 'center', zIndex: 10 }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: 'var(--green)',
-              boxShadow: '0 0 0 2px rgba(0,0,0,0.4)',
-              animation: 'pulse-dot 2s ease-in-out infinite',
-              flexShrink: 0,
-            }} />
-            {(scene.costBRL !== undefined || scene.modelUsed) && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                padding: '2px 8px', borderRadius: 6,
-                background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                fontSize: 11,
-              }}>
-                {scene.modelUsed && (
-                  <span style={{ fontWeight: 700, color: '#A5B4FC' }}>{modelLabelShort(scene.modelUsed)}</span>
-                )}
-                {scene.costBRL !== undefined && (
-                  <>
-                    {scene.modelUsed && <span style={{ color: 'rgba(255,255,255,0.15)' }}>·</span>}
-                    <span style={{ fontFamily: 'var(--mono)', color: '#34D399' }}>R${scene.costBRL.toFixed(3).replace('.', ',')}</span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Top-right: action icons (show on hover) */}
-          <div className="img-hover-row" style={{
-            position: 'absolute', top: 8, right: 8,
-            display: 'flex', gap: 4, zIndex: 10,
-            opacity: 0, transition: 'opacity .15s ease',
-          }}>
-            <ImgBtn onClick={() => onAnalyzeText(scene)} disabled={isBusy} title="Analisar texto" color="rgba(139,92,246,0.8)">
-              <TextAnalysisIcon width={13} height={13} />
-            </ImgBtn>
-            <ImgBtn onClick={handleDownload} disabled={isBusy} title="Baixar" color="rgba(16,185,129,0.8)">
-              <DownloadIcon width={13} height={13} />
-            </ImgBtn>
-            <ImgBtn onClick={() => setIsEditModalOpen(true)} disabled={isBusy} title="Editar imagem" color="rgba(99,102,241,0.8)">
-              <EditIcon width={13} height={13} />
-            </ImgBtn>
-          </div>
-
-          {/* Bottom-left: revert */}
-          {scene.previousImageUrl && (
-            <div className="img-hover-revert" style={{
-              position: 'absolute', bottom: 8, left: 8,
-              display: 'flex', alignItems: 'center', gap: 5, zIndex: 10,
-              padding: '4px 5px', borderRadius: 8,
-              background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
-              border: '1px solid rgba(255,255,255,0.07)',
-              opacity: 0, transition: 'opacity .15s ease',
-            }}>
-              <img src={scene.previousImageUrl} alt="Anterior"
-                style={{ width: 32, height: 24, objectFit: 'cover', borderRadius: 5, border: '1px solid rgba(255,255,255,0.1)' }} />
-              <button onClick={() => onRevertImage(scene.id)} title="Reverter" style={{
-                padding: 5, borderRadius: 5, background: 'rgba(255,255,255,0.08)',
-                border: 'none', cursor: 'pointer', color: '#fff', display: 'flex',
-                transition: 'background .12s',
-              }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(245,158,11,0.5)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
-              >
-                <RevertIcon width={12} height={12} />
-              </button>
-            </div>
-          )}
-
-          {/* Bottom-right: dimensions */}
-          {scene.imageWidth && scene.imageHeight && (
-            <div style={{
-              position: 'absolute', bottom: 8, right: 8, zIndex: 10,
-              padding: '2px 7px', borderRadius: 6,
-              background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-              fontSize: 10, fontFamily: 'var(--mono)', color: 'rgba(255,255,255,0.5)',
-              pointerEvents: 'none',
-            }}>
-              {scene.imageWidth}×{scene.imageHeight}
-              <span style={{ marginLeft: 5, color: 'rgba(255,255,255,0.25)' }}>
-                {aspectRatioLabel(scene.imageWidth, scene.imageHeight)}
-              </span>
-            </div>
-          )}
-
-          {/* Reference badge + hover preview */}
-          {scene.isContinuation && referenceSceneData.referenceScene?.imageUrl && (
-            <div className="img-ref-badge" style={{
-              position: 'absolute', bottom: 8, left: 8, zIndex: 20,
-              display: 'flex', alignItems: 'center', gap: 5,
-              cursor: 'default',
-            }}>
-              {/* Tooltip preview — shown via CSS sibling selector on hover */}
-              <div className="img-ref-tooltip" style={{
-                position: 'absolute', bottom: '100%', left: 0, marginBottom: 8,
-                background: 'rgba(10,10,18,0.92)', backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(99,102,241,0.35)',
-                borderRadius: 10, padding: 8,
-                display: 'flex', flexDirection: 'column', gap: 6,
-                width: 140, boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                opacity: 0, pointerEvents: 'none',
-                transition: 'opacity .15s ease, transform .15s ease',
-                transform: 'translateY(4px)',
-              }}>
-                <p style={{ fontSize: 10, color: '#A5B4FC', fontWeight: 600, margin: 0 }}>
-                  Referência usada
-                </p>
-                <img
-                  src={referenceSceneData.referenceScene.imageUrl}
-                  alt="Referência"
-                  style={{ width: '100%', borderRadius: 6, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.08)' }}
-                />
-                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', margin: 0 }}>
-                  Cena {referenceSceneData.identifier}
-                </p>
-              </div>
-              {/* Badge pill */}
-              <div style={{
-                padding: '2px 7px', borderRadius: 6,
-                background: 'rgba(99,102,241,0.25)', backdropFilter: 'blur(6px)',
-                border: '1px solid rgba(99,102,241,0.4)',
-                fontSize: 10, fontWeight: 600, color: '#A5B4FC',
-                letterSpacing: '0.02em',
-              }}>
-                ref
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (scene.isLoading) {
-      return (
-        <div style={{
-          width: '100%', height: '100%', minHeight: 200,
-          position: 'relative', overflow: 'hidden',
-          background: 'var(--surface-2)',
-        }}>
-          {/* Shimmer sweep */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'linear-gradient(105deg, transparent 35%, rgba(79,140,255,0.07) 50%, transparent 65%)',
-            backgroundSize: '200% 100%',
-            animation: 'shimmer 1.6s ease-in-out infinite',
-          }} />
-          {/* Rule-of-thirds grid lines */}
-          <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, opacity: 0.05 }} preserveAspectRatio="none">
-            <line x1="33%" y1="0" x2="33%" y2="100%" stroke="white" strokeWidth="1"/>
-            <line x1="66%" y1="0" x2="66%" y2="100%" stroke="white" strokeWidth="1"/>
-            <line x1="0" y1="33%" x2="100%" y2="33%" stroke="white" strokeWidth="1"/>
-            <line x1="0" y1="66%" x2="100%" y2="66%" stroke="white" strokeWidth="1"/>
-          </svg>
-          {/* Center badge */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: 'var(--indigo-s)', border: '1px solid var(--indigo-b)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Spinner size={16} />
-            </div>
-            <p style={{ fontSize: 11, color: 'var(--text-4)', fontWeight: 500, letterSpacing: '0.03em' }}>
-              Gerando visualização…
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    if (scene.error) {
-      return (
-        <div style={{
-          width: '100%', height: '100%', minHeight: 200,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: 8, padding: 20, textAlign: 'center',
-          background: 'rgba(248,113,113,0.04)',
-        }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)' }}>Erro ao gerar</p>
-          <p style={{ fontSize: 11, color: 'rgba(248,113,113,0.6)', lineHeight: 1.5, maxWidth: 180 }}>{scene.error}</p>
-          <button onClick={() => onVisualize(scene.id)} className="btn btn-primary" style={{ fontSize: 11, marginTop: 4 }}>
-            Tentar novamente
-          </button>
-        </div>
-      );
-    }
-
-    /* Empty state */
-    return (
-      <div style={{
-        width: '100%', height: '100%', minHeight: 200,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 12, padding: 24, textAlign: 'center',
-        background: 'var(--surface-2)',
-      }}>
-        <div style={{
-          width: 48, height: 48, borderRadius: 12,
-          background: 'var(--indigo-s)', border: '1px solid var(--indigo-b)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <SparklesIcon width={22} height={22} style={{ color: '#818CF8' }} />
-        </div>
-        <div>
-          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 4 }}>Visualizar cena</p>
-          <p style={{ fontSize: 11, color: 'var(--text-4)', lineHeight: 1.5 }}>Gere uma imagem de IA para esta cena do roteiro</p>
-        </div>
-        <button
-          onClick={() => onVisualize(scene.id)}
-          disabled={!scene.image_prompt.trim() || !referenceSceneData.isValid || referenceSceneData.isImageMissing}
-          className="btn btn-primary"
-          style={{ fontSize: 12 }}
-          title={
-            !scene.image_prompt.trim()
-              ? 'Preencha o prompt da imagem antes de gerar.'
-              : !referenceSceneData.isValid
-                ? 'Corrija a ordem da cena de continuidade antes de gerar.'
-                : referenceSceneData.isImageMissing
-                  ? 'Gere primeiro a imagem da cena usada como referência.'
-                  : 'Gerar a visualização da cena'
-          }
-        >
-          <SparklesIcon width={13} height={13} />
-          Gerar Visualização
-        </button>
-        {referenceSceneData.isImageMissing && (
-          <p style={{ fontSize: 11, color: 'var(--amber)', lineHeight: 1.5 }}>
-            A cena de referência ({referenceSceneData.identifier}) precisa ser gerada primeiro.
-          </p>
-        )}
-      </div>
-    );
-  };
+  const creativePromptBusy = Boolean(scene.isUpdatingPrompt);
 
   return (
     <>
-      <div className="card card-hover anim-up scene-card-root" style={{
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'row',
-        minHeight: 220,
-      }}>
-        {/* ── Image panel (left, 36%) ── */}
-        <div className="scene-card-image-panel" style={{ width: '36%', flexShrink: 0, position: 'relative', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
-          {renderImagePanel()}
+      <div
+        ref={cardRef}
+        className="card card-hover anim-up sc-root"
+      >
+        <div className="sc-image">
+          <SceneCardImagePanel
+            scene={scene}
+            referenceData={referenceData}
+            isBusy={isBusy}
+            busyMessage={busyMessage}
+            isRefTooltipOpen={state.isRefTooltipOpen}
+            onPreview={onPreview}
+            onAnalyzeText={() => onAnalyzeText(scene)}
+            onDownload={handleDownload}
+            onEditImage={() => dispatch({ type: 'OPEN_EDIT' })}
+            onCompareVersions={() => dispatch({ type: 'OPEN_COMPARE' })}
+            onRevertImage={() => onRevertImage(scene.id)}
+            onVisualize={() => onVisualize(scene.id)}
+            onToggleRefTooltip={() => dispatch({ type: 'TOGGLE_REF_TOOLTIP' })}
+            onCloseRefTooltip={() => dispatch({ type: 'CLOSE_REF_TOOLTIP' })}
+          />
         </div>
 
-        {/* ── Content panel (right) ── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '14px 16px 14px', minWidth: 0 }}>
+        <div className="sc-content">
+          <SceneCardHeader scene={scene} />
+          <SceneCardCostStrip scene={scene} />
+          <SafeTaggedDescription text={scene.tagged_description} className="sc-description" />
 
-          {/* ── Header ── */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{
-                fontSize: 13, fontWeight: 700, color: 'var(--text-1)',
-                lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {scene.original_location}
-              </p>
-            </div>
-            {/* Scene ID badge */}
-            <span style={{
-              fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)',
-              padding: '2px 8px', borderRadius: 6, flexShrink: 0,
-              background: 'var(--indigo-s)', color: '#818CF8', border: '1px solid var(--indigo-b)',
-              letterSpacing: '0.03em',
-            }}>
-              C:{scene.scene_id} · S:{scene.sub_id} · O:{scene.order}
-            </span>
-          </div>
-
-          {/* ── Cost strip ── */}
-          {scene.imageUrl && (scene.costBRL !== undefined || scene.modelUsed) && (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-              gap: 6,
-              padding: '8px 10px',
-              marginBottom: 8,
-              borderRadius: 8,
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-            }}>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Atual</p>
-                <p style={{ fontSize: 13, fontWeight: 800, color: '#34D399', fontFamily: 'var(--mono)', marginTop: 2, whiteSpace: 'nowrap' }}>
-                  {scene.costBRL !== undefined ? `R$ ${scene.costBRL.toFixed(3).replace('.', ',')}` : '—'}
-                </p>
-                <p style={{ fontSize: 10, color: '#818CF8', fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {scene.modelUsed ? modelLabelShort(scene.modelUsed) : 'Modelo não registrado'}
-                </p>
-              </div>
-
-              <div style={{ minWidth: 0, paddingLeft: 7, borderLeft: '1px solid var(--border)' }}
-                title="Custo acumulado desta cena">
-                <p style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Acumulado</p>
-                <p style={{ fontSize: 13, fontWeight: 800, color: '#FCD34D', fontFamily: 'var(--mono)', marginTop: 2, whiteSpace: 'nowrap' }}>
-                  R$ {(scene.accumulatedCostBRL ?? scene.costBRL ?? 0).toFixed(3).replace('.', ',')}
-                </p>
-                <p style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 1, whiteSpace: 'nowrap' }}>{scene.versionCount ?? 1} {(scene.versionCount ?? 1) === 1 ? 'versão' : 'versões'}</p>
-              </div>
-
-              <div style={{ minWidth: 0, paddingLeft: 7, borderLeft: '1px solid var(--border)' }}>
-                <p style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Tokens</p>
-                <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-2)', fontFamily: 'var(--mono)', marginTop: 2, whiteSpace: 'nowrap' }}>
-                  {scene.tokens ? scene.tokens.toLocaleString('pt-BR') : '—'}
-                </p>
-                <p style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 1, whiteSpace: 'nowrap' }}>geração atual</p>
-              </div>
-            </div>
-          )}
-
-          {/* ── Description ── */}
-          <p
-            style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.65, marginBottom: 8 }}
-            dangerouslySetInnerHTML={{
-              __html: scene.tagged_description.replace(
-                /\[(.*?)\]/g,
-                '<strong style="color:#818CF8;font-weight:600">[$1]</strong>'
-              ),
-            }}
-          />
-
-          {/* ── Character tags ── */}
           <SceneCharacterTags
             scene={scene}
             characters={characters}
@@ -559,39 +243,39 @@ const SceneCard: React.FC<SceneCardProps> = ({
           <SceneGenerationChecklist
             scene={scene}
             characters={characters}
-            referenceSceneData={referenceSceneData}
+            referenceSceneData={referenceData}
           />
 
-          {/* ── Split suggestion ── */}
-          <SceneSplitSuggestion scene={scene} onOpenSplit={() => setIsSplitModalOpen(true)} />
+          <SceneSplitSuggestion scene={scene} onOpenSplit={() => dispatch({ type: 'OPEN_SPLIT' })} />
 
-          {/* ── Continuation ── */}
           <SceneContinuation
             scene={scene}
             sceneIndex={sceneIndex}
             isBusy={isBusy}
-            referenceSceneData={referenceSceneData}
+            referenceSceneData={{
+              isValid: referenceData.isValid,
+              isImageMissing: referenceData.isImageMissing,
+              identifier: String(referenceData.identifier),
+            }}
             onContinuationChange={onContinuationChange}
             onContinuationReferenceChange={onContinuationReferenceChange}
           />
 
-          {/* ── Persistent scene references (objetos, logos, imagens externas) ── */}
           {onSceneReferencesChange && (
             <div style={{ marginBottom: 10 }}>
               <SceneReferencesPanel
-                references={sceneReferences}
+                references={scene.references ?? []}
                 onChange={updater => onSceneReferencesChange(scene.id, updater)}
-                disabled={isSceneRefBusy}
+                disabled={isBusy}
               />
             </div>
           )}
 
-          {/* ── Style + prompt ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
-            {/* Visual style module (a família/medium da imagem: foto, anime, cartoon...) */}
             <div>
-              <label className="label">Estética</label>
+              <label className="label" htmlFor={`sc-style-${scene.id}`}>Estética</label>
               <select
+                id={`sc-style-${scene.id}`}
                 value={scene.prompt_json?.visual_style?.style_family || ''}
                 onChange={e => onSceneVisualStyleChange(scene.id, e.target.value)}
                 className="field"
@@ -606,7 +290,6 @@ const SceneCard: React.FC<SceneCardProps> = ({
               </select>
             </div>
 
-            {/* Shot/camera module */}
             <div>
               <label className="label">Tipo de plano / câmera</label>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -615,11 +298,9 @@ const SceneCard: React.FC<SceneCardProps> = ({
                   onChange={(v) => onStyleChange(scene.id, v)}
                   disabled={isBusy || scene.isUpdatingPrompt}
                 />
-                {/* Botão de re-análise via IA — só aparece quando NÃO há prompt_json
-                    (cena legada / análise pendente). Quando o JSON existe, o onChange
-                    do select acima já aplica a mudança em handleSceneStyleChange. */}
                 {!scene.prompt_json && (
                   <button
+                    type="button"
                     onClick={() => onUpdatePrompt(scene.id)}
                     disabled={isBusy || scene.isUpdatingPrompt}
                     className="btn btn-ghost"
@@ -639,18 +320,13 @@ const SceneCard: React.FC<SceneCardProps> = ({
               <div>
                 <label className="label">Posição da câmera</label>
                 <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface-2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 8, padding: '8px 10px', borderRadius: 8,
+                  border: '1px solid var(--border)', background: 'var(--surface-2)',
                 }}>
                   <div style={{ minWidth: 0 }}>
                     <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', margin: 0 }}>
-                      {cameraPositionSummary}
+                      {cameraSummary.summary}
                     </p>
                     <p style={{ fontSize: 10, color: 'var(--text-4)', marginTop: 2 }}>
                       Controle 3D carregado sob demanda.
@@ -658,25 +334,24 @@ const SceneCard: React.FC<SceneCardProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setIsCameraControlOpen(open => !open)}
+                    onClick={() => dispatch({ type: 'TOGGLE_CAMERA' })}
                     disabled={isBusy || scene.isUpdatingPrompt}
                     className="btn btn-ghost"
                     style={{
-                      fontSize: 11,
-                      padding: '5px 9px',
-                      flexShrink: 0,
-                      color: isCameraControlOpen ? '#C4B5FD' : 'var(--text-3)',
-                      borderColor: isCameraControlOpen ? 'rgba(139,92,246,0.55)' : 'var(--border-md)',
+                      fontSize: 11, padding: '5px 9px', flexShrink: 0,
+                      color: state.isCameraControlOpen ? 'var(--violet-text-h)' : 'var(--text-3)',
+                      borderColor: state.isCameraControlOpen ? 'rgba(139,92,246,0.55)' : 'var(--border-md)',
                     }}
+                    aria-expanded={state.isCameraControlOpen}
                   >
-                    {isCameraControlOpen ? 'Fechar 3D' : 'Abrir 3D'}
+                    {state.isCameraControlOpen ? 'Fechar 3D' : 'Abrir 3D'}
                   </button>
                 </div>
-                {isCameraControlOpen && (
+                {state.isCameraControlOpen && (
                   <div style={{ marginTop: 8 }}>
                     <CameraPositionControl
-                      position={selectedCameraPosition}
-                      height={selectedCameraHeight}
+                      position={cameraSummary.position}
+                      height={cameraSummary.height}
                       disabled={isBusy || scene.isUpdatingPrompt}
                       onChange={(position, height) => onSceneCameraPositionChange(scene.id, position, height)}
                     />
@@ -685,20 +360,20 @@ const SceneCard: React.FC<SceneCardProps> = ({
               </div>
             )}
 
-            {/* Graphic style (preset/modificador aplicado POR CIMA da Estética via promptSuffix) */}
             {onOpenGraphicStyle && (
               <div>
                 <label className="label">Refinamento gráfico</label>
                 <button
+                  type="button"
                   onClick={() => onOpenGraphicStyle(scene.id)}
                   disabled={isBusy}
                   className="btn btn-ghost"
                   style={{ fontSize: 12, width: '100%', justifyContent: 'flex-start', gap: 7 }}
                 >
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M8 12a4 4 0 0 1 8 0"/>
-                    <line x1="12" y1="8" x2="12" y2="8.01"/>
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M8 12a4 4 0 0 1 8 0" />
+                    <line x1="12" y1="8" x2="12" y2="8.01" />
                   </svg>
                   {scene.sceneGraphicStyle
                     ? <><span style={{ color: 'var(--text-1)', fontWeight: 600 }}>{scene.sceneGraphicStyle.label}</span><span style={{ color: 'var(--text-4)', marginLeft: 'auto', fontSize: 11 }}>Alterar</span></>
@@ -707,6 +382,7 @@ const SceneCard: React.FC<SceneCardProps> = ({
                 </button>
                 {scene.sceneGraphicStyle && onClearGraphicStyle && (
                   <button
+                    type="button"
                     onClick={() => onClearGraphicStyle(scene.id)}
                     style={{ fontSize: 10, color: 'var(--text-4)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', textDecoration: 'underline' }}
                   >
@@ -716,425 +392,143 @@ const SceneCard: React.FC<SceneCardProps> = ({
               </div>
             )}
 
-            {/* Prompt */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <label className="label" style={{ marginBottom: 0 }}>Prompt de Imagem</label>
+                <label className="label" htmlFor={`sc-prompt-${scene.id}`} style={{ marginBottom: 0 }}>Prompt de Imagem</label>
                 {onRecreatePrompt && (
                   <button
-                    onClick={() => setIsCreativeOpen(o => !o)}
+                    type="button"
+                    onClick={() => dispatch({ type: 'OPEN_CREATIVE' })}
                     disabled={isBusy || creativePromptBusy}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
                       fontSize: 11, fontWeight: 600,
-                      color: isCreativeOpen ? '#C4B5FD' : '#A78BFA',
-                      background: isCreativeOpen ? 'rgba(139,92,246,0.12)' : 'none',
-                      border: `1px solid ${isCreativeOpen ? 'rgba(139,92,246,0.4)' : 'transparent'}`,
+                      color: 'var(--violet-text)',
+                      background: 'none',
+                      border: '1px solid transparent',
                       borderRadius: 6, padding: '3px 8px',
                       cursor: (isBusy || creativePromptBusy) ? 'not-allowed' : 'pointer',
                       opacity: (isBusy || creativePromptBusy) ? 0.5 : 1,
-                      transition: 'background .12s, border-color .12s, color .12s',
                     }}
-                    title="Descreva uma nova direção criativa e a IA refaz o prompt da imagem do zero, mantendo o conteúdo da cena"
+                    title="Cmd/Ctrl+R: descreva uma nova direção criativa e a IA refaz o prompt"
                   >
-                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9"/>
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                     </svg>
                     Refazer direção criativa
                   </button>
                 )}
               </div>
 
-              {/* Painel de direção criativa */}
-              {onRecreatePrompt && isCreativeOpen && (
-                <div style={{
-                  margin: '6px 0 8px',
-                  padding: '10px 11px',
-                  borderRadius: 8,
-                  background: 'rgba(139,92,246,0.07)',
-                  border: '1px solid rgba(139,92,246,0.25)',
-                }}>
-                  <p style={{ fontSize: 10, fontWeight: 800, color: '#C4B5FD', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>
-                    Nova direção criativa
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 7 }}>
-                    {CREATIVE_DIRECTION_SUGGESTIONS.map(s => (
-                      <button
-                        key={s}
-                        onClick={() => setCreativeDirection(prev => {
-                          const t = prev.trim();
-                          return t ? `${t}; ${s.toLowerCase()}` : s;
-                        })}
-                        disabled={isBusy || creativePromptBusy}
-                        style={{
-                          fontSize: 10, padding: '2px 7px', borderRadius: 20,
-                          cursor: (isBusy || creativePromptBusy) ? 'not-allowed' : 'pointer',
-                          border: '1px solid rgba(139,92,246,0.35)',
-                          background: 'transparent', color: '#C4B5FD',
-                          transition: 'background .12s',
-                        }}
-                        onMouseEnter={e => { if (!(isBusy || creativePromptBusy)) (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.15)'; }}
-                        onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={creativeDirection}
-                    onChange={e => setCreativeDirection(e.target.value)}
-                    disabled={isBusy || creativePromptBusy}
-                    rows={3}
-                    placeholder="Ex: deixe a cena mais cinematográfica, ângulo baixo, luz dramática de fim de tarde, paleta âmbar — mantendo os mesmos personagens e ação."
-                    className="field"
-                    style={{ fontSize: 12, resize: 'none', width: '100%' }}
-                  />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 7 }}>
-                    <span style={{ fontSize: 10, color: 'var(--text-4)', lineHeight: 1.4 }}>
-                      A IA refaz o prompt mantendo o conteúdo da cena.
-                    </span>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button
-                        onClick={() => { setCreativeDirection(''); setIsCreativeOpen(false); }}
-                        disabled={creativePromptBusy}
-                        className="btn btn-ghost"
-                        style={{ fontSize: 11, padding: '5px 10px' }}
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={handleRecreatePromptClick}
-                        disabled={isBusy || creativePromptBusy || !creativeDirection.trim()}
-                        className="btn btn-primary"
-                        style={{ fontSize: 11, padding: '5px 12px', background: '#7C3AED', borderColor: '#7C3AED' }}
-                      >
-                        {creativePromptBusy ? <Spinner size={12} /> : <SparklesIcon width={13} height={13} />}
-                        {creativePromptBusy ? 'Recriando…' : 'Recriar prompt'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <textarea
+                id={`sc-prompt-${scene.id}`}
                 value={scene.image_prompt}
                 onChange={e => onPromptChange(scene.id, e.target.value)}
                 className="field"
                 rows={4}
-                style={{ resize: 'none', fontSize: 12, flex: 1, minHeight: 80, marginTop: isCreativeOpen ? 0 : 4 }}
+                style={{ resize: 'none', fontSize: 12, flex: 1, minHeight: 80, marginTop: 4 }}
                 disabled={isBusy || scene.isUpdatingPrompt}
+                aria-label="Prompt da imagem"
               />
             </div>
           </div>
 
-          {/* ── Action buttons ── */}
           <SceneActionButtons
             scene={scene}
             isBusy={isBusy}
-            referenceSceneData={referenceSceneData}
-            onOpenRefPanel={() => setIsRefPanelOpen(true)}
+            referenceSceneData={referenceData}
+            onOpenRefPanel={() => dispatch({ type: 'OPEN_REF_PANEL' })}
             onEditRegion={() => onEditRegion(scene)}
             onVisualize={() => onVisualize(scene.id)}
-            onRemoveVisualElements={handleRemoveVisualElements}
-            onOpenSplit={() => setIsSplitModalOpen(true)}
+            onRemoveVisualElements={async (instruction) => {
+              if (instruction === REMOVE_ALL_VISUAL_PROMPT) {
+                await handleRemoveAllVisualElements();
+              } else {
+                const prompt = `${instruction} Preserve a cena, personagens, enquadramento, iluminação, estilo visual, cores, profundidade e atmosfera. Preencha a área removida de forma natural, fotorrealista e coerente com o ambiente. Não adicione novos textos, logos, gráficos, interfaces ou elementos editoriais.`;
+                await editImage.run(prompt);
+              }
+            }}
+            onOpenSplit={() => dispatch({ type: 'OPEN_SPLIT' })}
             onGenerateEndFrame={onGenerateEndFrame ? () => onGenerateEndFrame(scene.id) : undefined}
           />
         </div>
       </div>
 
-      {/* ── Split images grid ── */}
       <SceneSplitGrid
         scene={scene}
         onClearSplit={() => onClearSplit(scene.id)}
         onPreview={onPreview}
-        onEditSplit={onUpdateSplitImage ? (split) => { setEditingSplit(split); setSplitEditState({ isLoading: false, error: null }); } : undefined}
+        onEditSplit={onUpdateSplitImage ? (split) => { dispatch({ type: 'START_EDITING_SPLIT', payload: split }); splitEditImage.reset(); } : undefined}
       />
 
-      {/* ── End frame for video ─────────────────────────────────── */}
-      {(scene.endFrameUrl || scene.endFrameIsLoading || scene.endFrameError) && (
-        <div className="card" style={{ marginTop: 6, padding: '12px 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#34D399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3"/>
-              </svg>
-              <span style={{ color: '#34D399' }}>Frames para vídeo</span>
-            </p>
-            <span style={{ fontSize: 10, color: 'var(--text-4)' }}>Início → Fim · Runway / Kling / Pika</span>
-          </div>
+      <SceneCardEndFramePanel scene={scene} onPreview={onPreview} />
 
-          <div className="scene-end-frame-grid" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center' }}>
-            {/* Start frame */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Frame inicial</p>
-              <div style={{ borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16/9', background: 'var(--surface-2)' }}>
-                {scene.imageUrl ? (
-                  <button onClick={() => onPreview(scene.imageUrl!)} style={{ display: 'block', width: '100%', height: '100%', border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}>
-                    <img src={scene.imageUrl} alt="Frame inicial" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  </button>
-                ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 80 }}>
-                    <p style={{ fontSize: 11, color: 'var(--text-4)' }}>Gere a cena primeiro</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Arrow */}
-            <div className="scene-end-frame-arrow" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#34D399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12"/>
-                <polyline points="12 5 19 12 12 19"/>
-              </svg>
-              <span style={{ fontSize: 9, color: 'var(--text-4)', letterSpacing: '0.04em' }}>MOVER</span>
-            </div>
-
-            {/* End frame */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Frame final</p>
-              <div style={{ borderRadius: 8, overflow: 'hidden', border: `1px solid ${scene.endFrameUrl ? 'rgba(52,211,153,0.4)' : 'var(--border)'}`, aspectRatio: '16/9', background: 'var(--surface-2)', position: 'relative' }}>
-                {scene.endFrameIsLoading ? (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 80 }}>
-                    <Spinner size={16} />
-                    <p style={{ fontSize: 10, color: 'var(--text-4)' }}>Gerando…</p>
-                  </div>
-                ) : scene.endFrameError ? (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 10, textAlign: 'center', minHeight: 80 }}>
-                    <p style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600 }}>Erro</p>
-                    <p style={{ fontSize: 10, color: 'rgba(248,113,113,0.6)', marginTop: 2, lineHeight: 1.4 }}>{scene.endFrameError}</p>
-                  </div>
-                ) : scene.endFrameUrl ? (
-                  <>
-                    <button onClick={() => onPreview(scene.endFrameUrl!)} style={{ display: 'block', width: '100%', height: '100%', border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}>
-                      <img src={scene.endFrameUrl} alt="Frame final" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        const ext = (scene.endFrameMimeType ?? 'image/png').split('/')[1] || 'png';
-                        const link = document.createElement('a');
-                        link.href = scene.endFrameUrl!;
-                        link.download = `Cena_${scene.scene_id}-${scene.sub_id}_frame_final.${ext}`;
-                        document.body.appendChild(link); link.click(); document.body.removeChild(link);
-                      }}
-                      style={{
-                        position: 'absolute', top: 4, right: 4,
-                        padding: 4, borderRadius: 5,
-                        background: 'rgba(0,0,0,0.55)', border: 'none',
-                        cursor: 'pointer', color: '#fff', display: 'flex',
-                        opacity: 0, transition: 'opacity .15s, background .12s',
-                      }}
-                      className="group-hover:opacity-100"
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; (e.currentTarget as HTMLElement).style.background = 'rgba(52,211,153,0.7)'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0'; (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.55)'; }}
-                    >
-                      <DownloadIcon width={11} height={11} />
-                    </button>
-                  </>
-                ) : null}
-              </div>
-              {scene.endFrameUrl && scene.endFrameCostBRL !== undefined && (
-                <p style={{ fontSize: 10, color: '#34D399', fontFamily: 'var(--mono)' }}>R${scene.endFrameCostBRL.toFixed(3).replace('.', ',')}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Reference modal ── */}
-      {isRefPanelOpen && scene.imageUrl && (
+      {state.isRefPanelOpen && scene.imageUrl && (
         <SceneReferencePanel
           scene={scene}
           scenes={scenes}
           isBusy={isBusy}
           onVisualizeWithReference={onVisualizeWithReference}
-          onClose={() => setIsRefPanelOpen(false)}
+          onClose={() => dispatch({ type: 'CLOSE_REF_PANEL' })}
         />
       )}
 
-      {/* ── Refinement section ───────────────────────────────────── */}
-      {scene.isRefining && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 12px', margin: '0 0 0 0',
-          background: 'rgba(245,158,11,0.07)', borderTop: '1px solid rgba(245,158,11,0.18)',
-        }}>
-          <div style={{
-            width: 14, height: 14, borderRadius: '50%',
-            border: '2px solid rgba(245,158,11,0.3)', borderTopColor: '#F59E0B',
-            animation: 'spin .7s linear infinite', flexShrink: 0,
-          }} />
-          <span style={{ fontSize: 11, color: '#F59E0B' }}>Refinando com IA…</span>
-        </div>
-      )}
+      <SceneCardRefinementPanel
+        scene={scene}
+        onApplySplitSuggestion={onApplySplitSuggestion}
+        onApplyAlternativePrompt={onApplyAlternativePrompt}
+      />
 
-      {scene.refinement && !scene.isRefining && (
-        <div style={{ borderTop: '1px solid var(--border)' }}>
-          {/* Toggle button */}
-          <button
-            onClick={() => setShowRefinement(v => !v)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer',
-              textAlign: 'left', transition: 'background .12s ease',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-          >
-            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 20h9"/>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-            </svg>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', flex: 1 }}>
-              Análise de refinamento
-            </span>
-            {scene.refinement.needsSplit && (
-              <span style={{
-                fontSize: 10, padding: '1px 6px', borderRadius: 4,
-                background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.30)',
-                color: '#F59E0B', fontWeight: 600,
-              }}>
-                Divisão sugerida
-              </span>
-            )}
-            <svg
-              width={11} height={11} viewBox="0 0 24 24" fill="none"
-              stroke="var(--text-4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              style={{ transform: showRefinement ? 'rotate(180deg)' : 'none', transition: 'transform .2s ease', flexShrink: 0 }}
-            >
-              <path d="M19 9l-7 7-7-7"/>
-            </svg>
-          </button>
-
-          {showRefinement && (
-            <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-              {/* Split suggestion */}
-              {scene.refinement.needsSplit && scene.refinement.splitSuggestion && (
-                <div style={{
-                  padding: '10px 12px', borderRadius: 8,
-                  background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.22)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#F59E0B' }}>
-                      Dividir em {scene.refinement.splitSuggestion.length} sub-cenas
-                    </p>
-                    {onApplySplitSuggestion && (
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: 11, padding: '3px 8px', color: '#F59E0B', borderColor: 'rgba(245,158,11,0.30)' }}
-                        onClick={() => onApplySplitSuggestion(scene.id)}
-                      >
-                        Aplicar divisão
-                      </button>
-                    )}
-                  </div>
-                  {scene.refinement.splitReason && (
-                    <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8, lineHeight: 1.5 }}>
-                      {scene.refinement.splitReason}
-                    </p>
-                  )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {scene.refinement.splitSuggestion.map((sub, i) => (
-                      <div key={i} style={{
-                        padding: '7px 10px', borderRadius: 6,
-                        background: 'var(--surface-2)', border: '1px solid var(--border)',
-                      }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, color: '#F59E0B', marginBottom: 3 }}>
-                          Sub-cena {i + 1}
-                        </p>
-                        <p style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.5, marginBottom: 4 }}>
-                          {sub.description}
-                        </p>
-                        <p style={{ fontSize: 10, color: 'var(--text-4)', fontFamily: 'var(--mono)', lineHeight: 1.4 }}>
-                          {sub.prompt}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Alternative prompt */}
-              {scene.refinement.alternativePrompt && (
-                <div style={{
-                  padding: '10px 12px', borderRadius: 8,
-                  background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.22)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#A78BFA' }}>
-                      Prompt alternativo
-                    </p>
-                    {onApplyAlternativePrompt && (
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: 11, padding: '3px 8px', color: '#A78BFA', borderColor: 'rgba(139,92,246,0.30)' }}
-                        onClick={() => onApplyAlternativePrompt(scene.id)}
-                        title="Trocar o prompt atual pelo alternativo (o atual vira alternativo)"
-                      >
-                        Aplicar alternativo
-                      </button>
-                    )}
-                  </div>
-                  {scene.refinement.alternativeReason && (
-                    <p style={{ fontSize: 11, color: 'var(--text-4)', marginBottom: 6, lineHeight: 1.5, fontStyle: 'italic' }}>
-                      {scene.refinement.alternativeReason}
-                    </p>
-                  )}
-                  <p style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.5 }}>
-                    {scene.refinement.alternativePrompt}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Modals */}
       {scene.imageUrl && (
         <ImageEditModal
-          isOpen={isEditModalOpen}
+          isOpen={state.isEditModalOpen}
           imageUrl={scene.imageUrl}
-          onClose={() => { setIsEditModalOpen(false); setEditState({ isLoading: false, error: null }); }}
-          onConfirm={handleConfirmEdit}
-          isEditing={editState.isLoading}
-          error={editState.error}
+          onClose={() => { dispatch({ type: 'CLOSE_EDIT' }); editImage.reset(); }}
+          onConfirm={async (prompt) => { await editImage.run(prompt); }}
+          isEditing={editImage.isLoading}
+          error={editImage.error}
         />
       )}
 
-      {editingSplit && (
+      {state.editingSplit && (
         <ImageEditModal
-          isOpen={true}
-          imageUrl={editingSplit.imageUrl}
-          onClose={() => { setEditingSplit(null); setSplitEditState({ isLoading: false, error: null }); }}
-          onConfirm={async (prompt) => {
-            if (!editingSplit) return;
-            setSplitEditState({ isLoading: true, error: null });
-            try {
-              const { base64Data, mimeType } = await editImageService(editingSplit.imageUrl, prompt);
-              const newUrl = `data:${mimeType};base64,${base64Data}`;
-              onUpdateSplitImage?.(scene.id, editingSplit.id, newUrl, mimeType);
-              setEditingSplit(null);
-              setSplitEditState({ isLoading: false, error: null });
-            } catch (e) {
-              setSplitEditState({ isLoading: false, error: e instanceof Error ? e.message : 'Falha ao editar.' });
-            }
-          }}
-          isEditing={splitEditState.isLoading}
-          error={splitEditState.error}
+          isOpen
+          imageUrl={state.editingSplit.imageUrl}
+          onClose={() => { dispatch({ type: 'STOP_EDITING_SPLIT' }); splitEditImage.reset(); }}
+          onConfirm={async (prompt) => { await splitEditImage.run(prompt); }}
+          isEditing={splitEditImage.isLoading}
+          error={splitEditImage.error}
         />
       )}
 
       <SceneSplitModal
-        isOpen={isSplitModalOpen}
+        isOpen={state.isSplitModalOpen}
         sceneLabel={`Cena ${scene.scene_id}-${scene.sub_id} · ${scene.original_location}`}
         isGenerating={scene.isSplitting ?? false}
-        onClose={() => { if (!scene.isSplitting) setIsSplitModalOpen(false); }}
-        onGenerate={(count, instructions) => { setIsSplitModalOpen(false); onSplitScene(scene.id, count, instructions); }}
+        onClose={() => { if (!scene.isSplitting) dispatch({ type: 'CLOSE_SPLIT' }); }}
+        onGenerate={(count, instructions) => { dispatch({ type: 'CLOSE_SPLIT' }); onSplitScene(scene.id, count, instructions); }}
       />
+
+      {state.isCreativeOpen && onRecreatePrompt && (
+        <SceneCardCreativeModal
+          sceneLabel={`Cena ${scene.scene_id}-${scene.sub_id} · ${scene.original_location}`}
+          initialValue={state.creativeDirection}
+          isBusy={creativePromptBusy}
+          onCancel={() => dispatch({ type: 'CLOSE_CREATIVE' })}
+          onSubmit={handleRecreatePromptSubmit}
+        />
+      )}
+
+      {state.isCompareOpen && scene.previousImageUrl && scene.imageUrl && (
+        <SceneCardCompareModal
+          previousUrl={scene.previousImageUrl}
+          currentUrl={scene.imageUrl}
+          onClose={() => dispatch({ type: 'CLOSE_COMPARE' })}
+        />
+      )}
     </>
   );
 };
 
-export default React.memo(SceneCard);
+export default React.memo(SceneCard, sceneArePropsEqual);

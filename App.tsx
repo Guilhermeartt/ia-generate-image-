@@ -2020,11 +2020,13 @@ REGRAS ESTRITAS:
                     scenes={scenes}
                     aspectRatio={aspectRatio}
                     onLetteringChange={(sceneId, videoLettering) =>
-                      setScenes((current) =>
-                        current.map((scene) =>
-                          scene.id === sceneId ? { ...scene, videoLettering } : scene,
-                        ),
-                      )
+                      setScenes((current) => {
+                        const target = current.find(scene => scene.id === sceneId);
+                        if (!target) return current;
+                        return current.map((scene) =>
+                          scene.scene_id === target.scene_id ? { ...scene, videoLettering } : scene,
+                        );
+                      })
                     }
                     onImageSourcesChange={(sceneId, videoImageSourceIds) =>
                       setScenes((current) =>
@@ -2033,6 +2035,20 @@ REGRAS ESTRITAS:
                         ),
                       )
                     }
+                    onClipOverridesChange={(sceneId, videoClipOverrides) =>
+                      setScenes((current) =>
+                        current.map((scene) =>
+                          scene.id === sceneId ? { ...scene, videoClipOverrides } : scene,
+                        ),
+                      )
+                    }
+                    onExportRequest={({ aspectRatio: aspect, audio, totalSeconds }) => {
+                      const summary = `Export ${aspect}, ${totalSeconds.toFixed(1)}s${audio ? ` + áudio "${audio.label}"` : ''}`;
+                      showToast(
+                        `${summary} solicitado. O render acontece no backend Remotion — você receberá o MP4 no email assim que ficar pronto.`,
+                        'success',
+                      );
+                    }}
                   />
                 </Suspense>
               )}
