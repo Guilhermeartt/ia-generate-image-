@@ -19,6 +19,7 @@ export const LETTERING_STYLE_OPTIONS: LetteringStyleOption[] = [
   { id: 'marker', label: 'Marca-texto', description: 'Rabisco amarelo atrás do texto preto.' },
   { id: 'gradient', label: 'Gradiente', description: 'Texto com fill em gradiente colorido.' },
   { id: 'outline', label: 'Contorno', description: 'Stroke sem preenchimento — hollow.' },
+  { id: 'cg-box', label: 'CG / Quadro', description: 'Caixa chanfrada com logo — selo institucional.' },
 ];
 
 interface LetteringStyleCardsProps {
@@ -98,6 +99,16 @@ const StylePreview: React.FC<{ style: VideoLetteringStyle }> = ({ style }) => {
     return (
       <div className="vs-style-preview vs-style-preview-outline" aria-hidden="true">
         <span>OUTLINE</span>
+      </div>
+    );
+  }
+  if (style === 'cg-box') {
+    return (
+      <div className="vs-style-preview vs-style-preview-cg-box" aria-hidden="true">
+        <div className="vs-style-preview-cg-bg">
+          <span>CG</span>
+          <span className="vs-style-preview-cg-logo" />
+        </div>
       </div>
     );
   }

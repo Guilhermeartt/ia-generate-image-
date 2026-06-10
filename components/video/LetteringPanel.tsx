@@ -1,10 +1,44 @@
-import React from 'react';
-import type { Scene, SceneVideoLettering } from '@/types';
+import React, { useRef, useState } from 'react';
+import type {
+  Scene,
+  SceneVideoLettering,
+  VideoCgChamferSide,
+  VideoLogoPosition,
+} from '@/types';
 import type { StoryboardVideoScene } from './StoryboardComposition';
 import type { SceneVideoImageSource } from './videoScenes';
 import LetteringStyleCards from './LetteringStyleCards';
 import { ColorOpacityField, RangeField } from './VideoStudioControls';
-import { LETTERING_TEMPLATE_PATCH } from './videoStudioConstants';
+import {
+  CHAMFER_SIDE_OPTIONS,
+  LETTERING_TEMPLATE_PATCH,
+  LOGO_POSITION_OPTIONS,
+} from './videoStudioConstants';
+
+/** Lê um arquivo de imagem e devolve um data URL reduzido (máx. 480px) para manter o payload pequeno. */
+const fileToScaledDataUrl = (file: File, maxDim = 480): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read-failed'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('decode-failed'));
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('no-ctx')); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
 
 interface LetteringPanelProps {
   clip: StoryboardVideoScene;
@@ -42,6 +76,23 @@ const LetteringPanel: React.FC<LetteringPanelProps> = ({
 }) => {
   const letteringStart = Math.min(displayLettering.startSeconds ?? 0.2, parentSceneDuration);
   const letteringEnd = Math.min(displayLettering.endSeconds ?? parentSceneDuration, parentSceneDuration);
+
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const isCgBox = displayLettering.style === 'cg-box';
+
+  const handleLogoFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setLogoError('Use uma imagem (PNG, JPG ou SVG).'); return; }
+    if (file.size > 3 * 1024 * 1024) { setLogoError('Logo acima de 3MB. Use um arquivo menor.'); return; }
+    try {
+      const dataUrl = await fileToScaledDataUrl(file);
+      setLogoError(null);
+      onLetteringPatchCommit({ logoUrl: dataUrl }, 'Logo do quadro');
+    } catch {
+      setLogoError('Falha ao carregar a logo. Tente outro arquivo.');
+    }
+  };
 
   return (
     <div className="vs-tab-panel" role="tabpanel" id={panelId} aria-labelledby={tabId}>
@@ -154,6 +205,132 @@ const LetteringPanel: React.FC<LetteringPanelProps> = ({
         onOpacityChange={(opacity) => onLetteringPatchPreview({ backgroundOpacity: opacity })}
         onOpacityCommit={(opacity) => onLetteringPatchCommit({ backgroundOpacity: opacity }, 'Opacidade do fundo')}
       />
+
+      {isCgBox && (
+        <>
+          <p className="vs-section-title">Quadro CG</p>
+          <div className="vs-row-2">
+            <div>
+              <label className="panel-field-label" htmlFor="cg-chamfer-side">Chanfro</label>
+              <select
+                id="cg-chamfer-side"
+                className="field"
+                value={displayLettering.chamferSide ?? 'none'}
+                onChange={(event) => onLetteringPatchCommit(
+                  { chamferSide: event.target.value as VideoCgChamferSide },
+                  'Lado do chanfro',
+                )}
+              >
+                {CHAMFER_SIDE_OPTIONS.map(option => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <RangeField
+              id="cg-chamfer-size"
+              label="Profundidade"
+              min={0}
+              max={60}
+              step={2}
+              value={displayLettering.chamferSize ?? 0}
+              onChange={(value) => onLetteringPatchPreview({ chamferSize: value })}
+              onCommit={(value) => onLetteringPatchCommit({ chamferSize: value }, 'Profundidade do chanfro')}
+              format={(value) => `${value}%`}
+            />
+          </div>
+
+          <p className="vs-section-title">Logo</p>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            aria-label="Enviar logo do quadro"
+            onChange={(event) => { handleLogoFile(event.target.files?.[0]); event.target.value = ''; }}
+          />
+          {displayLettering.logoUrl ? (
+            <div className="vs-cg-logo-row">
+              <img src={displayLettering.logoUrl} alt="Logo do quadro CG" className="vs-cg-logo-thumb" />
+              <button type="button" className="btn btn-ghost" onClick={() => logoInputRef.current?.click()}>
+                Trocar
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => onLetteringPatchCommit({ logoUrl: undefined }, 'Remover logo')}
+              >
+                Remover
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ width: '100%' }}
+              onClick={() => logoInputRef.current?.click()}
+            >
+              Enviar logo (PNG/JPG)
+            </button>
+          )}
+          {logoError && <p className="vs-hint" style={{ color: 'var(--red-text, #f87171)' }}>{logoError}</p>}
+
+          {displayLettering.logoUrl && (
+            <div className="vs-row-2">
+              <div>
+                <label className="panel-field-label" htmlFor="cg-logo-position">Posição do logo</label>
+                <select
+                  id="cg-logo-position"
+                  className="field"
+                  value={displayLettering.logoPosition ?? 'bottom-right'}
+                  onChange={(event) => onLetteringPatchCommit(
+                    { logoPosition: event.target.value as VideoLogoPosition },
+                    'Posição do logo',
+                  )}
+                >
+                  {LOGO_POSITION_OPTIONS.map(option => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <RangeField
+                id="cg-logo-size"
+                label="Tamanho do logo"
+                min={2}
+                max={40}
+                step={1}
+                value={displayLettering.logoSizePercent ?? 16}
+                onChange={(value) => onLetteringPatchPreview({ logoSizePercent: value })}
+                onCommit={(value) => onLetteringPatchCommit({ logoSizePercent: value }, 'Tamanho do logo')}
+                format={(value) => `${value}%`}
+              />
+            </div>
+          )}
+
+          <p className="vs-section-title">Posição livre (qualquer lado/altura)</p>
+          <RangeField
+            id="cg-offset-x"
+            label="Horizontal"
+            min={-50}
+            max={50}
+            step={1}
+            value={displayLettering.offsetXPercent ?? 0}
+            onChange={(value) => onLetteringPatchPreview({ offsetXPercent: value })}
+            onCommit={(value) => onLetteringPatchCommit({ offsetXPercent: value }, 'Ajuste horizontal')}
+            format={(value) => `${value > 0 ? '+' : ''}${value}%`}
+          />
+          <RangeField
+            id="cg-offset-y"
+            label="Vertical"
+            min={-50}
+            max={50}
+            step={1}
+            value={displayLettering.offsetYPercent ?? 0}
+            onChange={(value) => onLetteringPatchPreview({ offsetYPercent: value })}
+            onCommit={(value) => onLetteringPatchCommit({ offsetYPercent: value }, 'Ajuste vertical')}
+            format={(value) => `${value > 0 ? '+' : ''}${value}%`}
+          />
+        </>
+      )}
 
       <p className="vs-section-title">Tempo</p>
       <div className="vs-row-2">

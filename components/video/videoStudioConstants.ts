@@ -1,8 +1,10 @@
 import type {
   SceneVideoLettering,
+  VideoCgChamferSide,
   VideoClipTransition,
   VideoKenBurnsDirection,
   VideoLetteringStyle,
+  VideoLogoPosition,
   VideoTransitionEasing,
 } from '@/types';
 
@@ -64,7 +66,31 @@ export const LETTERING_TEMPLATE_PATCH: Record<VideoLetteringStyle, Partial<Scene
   marker: { position: 'center', align: 'center', fontWeight: 800, letterSpacing: 0.01, backgroundOpacity: 0, borderRadius: 0, color: '#0b0b0b' },
   gradient: { position: 'center', align: 'center', fontWeight: 900, letterSpacing: 0.04, backgroundOpacity: 0, borderRadius: 0, color: '#ffffff' },
   outline: { position: 'center', align: 'center', fontWeight: 900, letterSpacing: 0.06, backgroundOpacity: 0, borderRadius: 0, color: '#ffffff' },
+  'cg-box': {
+    position: 'center', align: 'right', fontWeight: 800, letterSpacing: 0.02,
+    backgroundColor: '#16266b', backgroundOpacity: 1, borderRadius: 0, color: '#ffffff',
+    chamferSide: 'left', chamferSize: 26,
+    logoPosition: 'bottom-right', logoSizePercent: 16,
+    offsetXPercent: 0, offsetYPercent: 0,
+  },
 };
+
+export const CHAMFER_SIDE_OPTIONS: ReadonlyArray<{ id: VideoCgChamferSide; label: string }> = [
+  { id: 'none', label: 'Sem chanfro' },
+  { id: 'left', label: 'Esquerda' },
+  { id: 'right', label: 'Direita' },
+  { id: 'top', label: 'Topo' },
+  { id: 'bottom', label: 'Base' },
+];
+
+export const LOGO_POSITION_OPTIONS: ReadonlyArray<{ id: VideoLogoPosition; label: string }> = [
+  { id: 'top-left', label: 'Topo · esquerda' },
+  { id: 'top-center', label: 'Topo · centro' },
+  { id: 'top-right', label: 'Topo · direita' },
+  { id: 'bottom-left', label: 'Base · esquerda' },
+  { id: 'bottom-center', label: 'Base · centro' },
+  { id: 'bottom-right', label: 'Base · direita' },
+];
 
 export type TabId = 'lettering' | 'motion' | 'audio' | 'preview';
 

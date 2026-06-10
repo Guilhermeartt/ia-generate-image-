@@ -171,7 +171,20 @@ export type VideoLetteringStyle =
   | 'subtitle'
   | 'marker'
   | 'gradient'
-  | 'outline';
+  | 'outline'
+  | 'cg-box';
+
+/** Lado chanfrado (inclinado) da caixa do estilo `cg-box`. */
+export type VideoCgChamferSide = 'none' | 'left' | 'right' | 'top' | 'bottom';
+
+/** Posição do logo dentro da caixa do estilo `cg-box`. */
+export type VideoLogoPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
 export type VideoLetteringEnterAnimation =
   | 'fade'
   | 'slide-up'
@@ -259,6 +272,21 @@ export interface SceneVideoLettering {
   borderRadius?: number;
   /** Opacidade do próprio texto (0..1). */
   textOpacity?: number;
+  // ── Estilo `cg-box` (selo/quadro institucional) ──
+  /** Lado chanfrado da caixa CG. Default: 'none'. */
+  chamferSide?: VideoCgChamferSide;
+  /** Profundidade do chanfro em % da dimensão do lado (0..60). */
+  chamferSize?: number;
+  /** Logo (data URL) exibido junto da caixa CG. */
+  logoUrl?: string;
+  /** Posição do logo dentro da caixa CG. Default: 'bottom-right'. */
+  logoPosition?: VideoLogoPosition;
+  /** Largura do logo em % do lado menor do vídeo (2..40). */
+  logoSizePercent?: number;
+  /** Ajuste fino horizontal do bloco, em % da largura do frame (-50..50). */
+  offsetXPercent?: number;
+  /** Ajuste fino vertical do bloco, em % da altura do frame (-50..50). */
+  offsetYPercent?: number;
 }
 
 /** Override de configuração por clipe individual (uma imagem do vídeo). */

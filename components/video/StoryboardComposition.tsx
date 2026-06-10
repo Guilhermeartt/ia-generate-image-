@@ -367,11 +367,41 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
   const isMarker = style === 'marker';
   const isGradient = style === 'gradient';
   const isOutline = style === 'outline';
+  const isCgBox = style === 'cg-box';
+
+  // ── Estilo CG (cg-box): chanfro, logo e ajuste fino de posição ──
+  const chamferSide = clip.lettering.chamferSide ?? 'none';
+  const chamferSize = Math.max(0, Math.min(60, clip.lettering.chamferSize ?? 0));
+  const cgClipPath = !isCgBox || chamferSide === 'none' || chamferSize === 0
+    ? undefined
+    : chamferSide === 'left' ? `polygon(${chamferSize}% 0, 100% 0, 100% 100%, 0 100%)`
+    : chamferSide === 'right' ? `polygon(0 0, 100% 0, ${100 - chamferSize}% 100%, 0 100%)`
+    : chamferSide === 'top' ? `polygon(0 ${chamferSize}%, 100% 0, 100% 100%, 0 100%)`
+    : `polygon(0 0, 100% 0, 100% ${100 - chamferSize}%, 0 100%)`;
+  const logoUrl = isCgBox ? clip.lettering.logoUrl : undefined;
+  const logoPosition = clip.lettering.logoPosition ?? 'bottom-right';
+  const logoOnTop = logoPosition.startsWith('top');
+  const logoWidthPx = baseSize * (Math.max(2, Math.min(40, clip.lettering.logoSizePercent ?? 16)) / 100);
+  const logoAlignSelf = logoPosition.endsWith('left') ? 'flex-start'
+    : logoPosition.endsWith('right') ? 'flex-end'
+    : 'center';
+  const offsetXPx = width * ((clip.lettering.offsetXPercent ?? 0) / 100);
+  const offsetYPx = height * ((clip.lettering.offsetYPercent ?? 0) / 100);
+  const cgBasePad = baseSize * 0.024;
+  // Padding extra no lado chanfrado para o texto não encostar no corte diagonal.
+  const cgChamferPad = cgBasePad + baseSize * (chamferSize / 100) * 0.5;
+  const cgPaddingStr = isCgBox
+    ? `${chamferSide === 'top' ? cgChamferPad : cgBasePad}px`
+      + ` ${chamferSide === 'right' ? cgChamferPad : cgBasePad * 1.3}px`
+      + ` ${chamferSide === 'bottom' ? cgChamferPad : cgBasePad}px`
+      + ` ${chamferSide === 'left' ? cgChamferPad : cgBasePad * 1.3}px`
+    : undefined;
 
   const backgroundColor = clip.lettering.backgroundColor ?? '#000000';
   const defaultBgOpacity =
     isBox || isLowerThird ? 0.72
     : isGlass ? 0.28
+    : isCgBox ? 1
     : 0;
   const backgroundOpacity = clip.lettering.backgroundOpacity ?? defaultBgOpacity;
   const parsedBackground = backgroundColor.startsWith('#') && backgroundColor.length === 7
@@ -470,7 +500,7 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
             filter: computedFilter || undefined,
             transform: [
               clip.lettering.position === 'center' ? 'translateY(-50%)' : '',
-              `translate(${enterOffsetX + exitOffsetX}px, ${enterOffsetY + exitOffsetY}px)`,
+              `translate(${enterOffsetX + exitOffsetX + offsetXPx}px, ${enterOffsetY + exitOffsetY + offsetYPx}px)`,
               `scale(${enterScale * exitScale})`,
               exitSkew !== 0 ? `skewX(${exitSkew}deg)` : '',
             ].filter(Boolean).join(' '),
@@ -479,13 +509,17 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
           <div
             style={{
               position: 'relative',
-              display: isMarker ? 'inline-block' : 'block',
+              display: isCgBox ? 'flex' : isMarker ? 'inline-block' : 'block',
+              flexDirection: isCgBox ? 'column' : undefined,
+              gap: isCgBox ? baseSize * 0.014 : undefined,
               maxWidth: isTitle ? '94%' : clip.lettering.align === 'center' ? '88%' : '82%',
-              padding: (isBox || isLowerThird || isGlass)
-                ? `${baseSize * 0.018}px ${baseSize * 0.026}px`
-                : isMarker
-                  ? `${baseSize * 0.005}px ${baseSize * 0.015}px`
-                  : 0,
+              padding: isCgBox
+                ? cgPaddingStr
+                : (isBox || isLowerThird || isGlass)
+                  ? `${baseSize * 0.018}px ${baseSize * 0.026}px`
+                  : isMarker
+                    ? `${baseSize * 0.005}px ${baseSize * 0.015}px`
+                    : 0,
               borderRadius: (clip.lettering.borderRadius
                 ?? (isBox ? 14 : isLowerThird ? 6 : isGlass ? 20 : 0)) * (baseSize / 1080),
               background:
@@ -506,7 +540,7 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
               fontWeight: clip.lettering.fontWeight ?? (isTitle || isGradient || isOutline ? 900 : isCinematic ? 700 : 650),
               lineHeight: 1.18,
               letterSpacing: `${clip.lettering.letterSpacing ?? (isTitle ? 0.08 : isCinematic ? 0.015 : 0)}em`,
-              textTransform: isTitle || isNeon || isOutline ? 'uppercase' : undefined,
+              textTransform: isTitle || isNeon || isOutline || isCgBox ? 'uppercase' : undefined,
               textAlign: clip.lettering.align,
               whiteSpace: 'pre-line',
               color: isGradient ? 'transparent' : isOutline ? 'transparent' : textColor,
@@ -517,21 +551,45 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
               WebkitTextStrokeColor: isOutline ? textColor : undefined,
               transform: isMarker ? 'rotate(-1.5deg)' : undefined,
               transformOrigin: 'center',
+              clipPath: cgClipPath,
+              overflow: isCgBox ? 'hidden' : undefined,
             }}
           >
-            {displayedText}
-            {showCaret && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: '0.06em',
-                  height: '1em',
-                  background: textColor,
-                  marginLeft: '0.05em',
-                  verticalAlign: 'text-bottom',
-                  opacity: Math.floor(frame / Math.max(1, Math.round(fps / 3))) % 2 === 0 ? 1 : 0,
-                }}
-              />
+            {isCgBox ? (
+              <>
+                {logoUrl && logoOnTop && (
+                  <Img
+                    src={logoUrl}
+                    style={{ width: logoWidthPx, height: 'auto', objectFit: 'contain', alignSelf: logoAlignSelf, display: 'block' }}
+                  />
+                )}
+                <span style={{ display: 'block', width: '100%', whiteSpace: 'pre-line', textAlign: clip.lettering.align }}>
+                  {displayedText}
+                </span>
+                {logoUrl && !logoOnTop && (
+                  <Img
+                    src={logoUrl}
+                    style={{ width: logoWidthPx, height: 'auto', objectFit: 'contain', alignSelf: logoAlignSelf, display: 'block' }}
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {displayedText}
+                {showCaret && (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: '0.06em',
+                      height: '1em',
+                      background: textColor,
+                      marginLeft: '0.05em',
+                      verticalAlign: 'text-bottom',
+                      opacity: Math.floor(frame / Math.max(1, Math.round(fps / 3))) % 2 === 0 ? 1 : 0,
+                    }}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
