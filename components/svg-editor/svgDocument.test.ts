@@ -4,13 +4,18 @@ import {
   appendSvgElement,
   createBlankSvg,
   duplicateSvgElement,
+  getSlotMeta,
   getSvgElementProperties,
+  listSlots,
   listSvgLayers,
+  markSlot,
+  parseViewBox,
   removeSvgElement,
   reorderSvgElement,
   resizeSvgElement,
   sanitizeSvg,
   translateSvgElement,
+  unmarkSlot,
   updateSvgElement,
   updateSvgText,
 } from './svgDocument';
@@ -101,5 +106,81 @@ describe('svgDocument', () => {
 
     const sentBack = reorderSvgElement(second.markup, second.id, 'back');
     expect(listSvgLayers(sentBack).map((layer) => layer.id)).toEqual([first.id, second.id]);
+  });
+});
+
+describe('slots do modelo', () => {
+  const withRect = () =>
+    appendSvgElement(createBlankSvg(), 'rect', { x: 10, y: 20, width: 100, height: 50 });
+
+  it('marca, lista e remove um slot com geometria resolvida', () => {
+    const { markup, id } = withRect();
+
+    const marked = markSlot(markup, id, { type: 'image', name: 'Imagem principal' });
+    expect(getSlotMeta(marked, id)).toEqual({ type: 'image', name: 'Imagem principal' });
+
+    const slots = listSlots(marked);
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({
+      id,
+      type: 'image',
+      name: 'Imagem principal',
+      bounds: { x: 10, y: 20, width: 100, height: 50 },
+    });
+
+    const unmarked = unmarkSlot(marked, id);
+    expect(getSlotMeta(unmarked, id)).toBeNull();
+    expect(listSlots(unmarked)).toHaveLength(0);
+  });
+
+  it('usa nome padrão quando vazio e atualiza o tipo de um slot existente', () => {
+    const { markup, id } = withRect();
+    const marked = markSlot(markup, id, { type: 'text', name: '   ' });
+    expect(getSlotMeta(marked, id)).toEqual({ type: 'text', name: 'Texto' });
+
+    const retyped = markSlot(marked, id, { type: 'icon', name: 'Selo' });
+    expect(getSlotMeta(retyped, id)).toEqual({ type: 'icon', name: 'Selo' });
+  });
+
+  it('preserva o data-slot através da sanitização (round-trip de import/export)', () => {
+    const { markup, id } = withRect();
+    const marked = markSlot(markup, id, { type: 'image', name: 'Capa' });
+    const roundTripped = sanitizeSvg(marked);
+    expect(getSlotMeta(roundTripped, id)).toEqual({ type: 'image', name: 'Capa' });
+  });
+
+  it('ignora data-slot inválido', () => {
+    const { markup, id } = withRect();
+    const tampered = updateSvgElement(markup, id, { 'data-slot': 'não-é-json' });
+    expect(getSlotMeta(tampered, id)).toBeNull();
+    expect(listSlots(tampered)).toHaveLength(0);
+  });
+
+  it('lê as dimensões do viewBox', () => {
+    expect(parseViewBox(createBlankSvg())).toEqual({ width: 800, height: 600 });
+    expect(parseViewBox('<svg></svg>')).toBeNull();
+  });
+
+  it('persiste a animação do slot e sobrevive à sanitização', () => {
+    const { markup, id } = withRect();
+    const animation = {
+      enter: 'slide-up',
+      exit: 'fade',
+      startSeconds: 0.2,
+      endSeconds: 4,
+      enterDurationSeconds: 0.5,
+      exitDurationSeconds: 0.4,
+    } as const;
+
+    const marked = markSlot(markup, id, { type: 'image', name: 'Capa', animation });
+    expect(getSlotMeta(marked, id)?.animation).toEqual(animation);
+    expect(listSlots(marked)[0].animation).toEqual(animation);
+
+    const roundTripped = sanitizeSvg(marked);
+    expect(getSlotMeta(roundTripped, id)?.animation).toMatchObject({
+      enter: 'slide-up',
+      exit: 'fade',
+      endSeconds: 4,
+    });
   });
 });

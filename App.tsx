@@ -262,6 +262,8 @@ const App: React.FC = () => {
     handleUpdateSplitImage,
     handleIncludeLetteringChange,
     handleSceneReferencesChange,
+    handleSceneTemplateChange,
+    handleSceneTemplateOverrideChange,
   } = useScenes({
     imageModel,
     aspectRatio,
@@ -2261,6 +2263,8 @@ REGRAS ESTRITAS:
                         }
                         onIncludeLetteringChange={handleIncludeLetteringChange}
                         onSceneReferencesChange={handleSceneReferencesChange}
+                        onSceneTemplateChange={handleSceneTemplateChange}
+                        onSceneTemplateOverrideChange={handleSceneTemplateOverrideChange}
                       />
                     ))}
                   </div>

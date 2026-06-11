@@ -136,6 +136,14 @@ export const generateCharacters = async (
   return apiPost<Character[]>('characters', { csvContent, promptTemplate });
 };
 
+/** Sugere, via IA, o texto de cada slot de texto de um modelo a partir da cena. */
+export const suggestTemplateBinding = async (
+  slots: { id: string; name: string; type: string }[],
+  scene: { lettering?: string; description?: string; location?: string }
+): Promise<Record<string, string>> => {
+  return apiPost<Record<string, string>>('suggest-template-binding', { slots, scene });
+};
+
 export const convertScriptToScenes = async (
   scriptText: string,
   maxScenes: number = 80,

@@ -1,11 +1,28 @@
 import React, { useRef } from 'react';
-import type { SvgElementProperties, SvgLayer } from './types';
+import SlotAnimationEditor from './SlotAnimationEditor';
+import type { SlotAnimation } from './slotAnimation';
+import type {
+  SlotType,
+  SvgElementProperties,
+  SvgLayer,
+  TemplateSlot,
+  TemplateSlotMeta,
+} from './types';
 
 interface SvgPropertiesPanelProps {
   properties: SvgElementProperties | null;
   layers: SvgLayer[];
   selectedId: string | null;
   documentName: string;
+  /** Conteúdo extra renderizado no topo do painel (ex.: biblioteca de modelos). */
+  libraryNode?: React.ReactNode;
+  /** Slot do elemento selecionado, ou null se ele não for um slot. */
+  slot: TemplateSlotMeta | null;
+  /** Todos os slots do modelo atual. */
+  slots: TemplateSlot[];
+  /** Se o canvas está mostrando a pré-visualização preenchida do modelo. */
+  previewMode: boolean;
+  onTogglePreview: () => void;
   onDocumentNameChange: (name: string) => void;
   onSelect: (id: string) => void;
   onDeleteLayer: (id: string) => void;
@@ -13,7 +30,17 @@ interface SvgPropertiesPanelProps {
   onChange: (attributes: Record<string, string | number | null>, label: string) => void;
   onTextChange: (text: string) => void;
   onBoundsChange: (bounds: { x: number; y: number; width: number; height: number }) => void;
+  onMarkSlot: (type: SlotType) => void;
+  onUnmarkSlot: () => void;
+  onRenameSlot: (name: string) => void;
+  onAnimationChange: (animation: SlotAnimation | undefined) => void;
 }
+
+const SLOT_LABELS: Record<SlotType, string> = {
+  image: 'Imagem',
+  text: 'Texto',
+  icon: 'Ícone',
+};
 
 const SWATCHES = [
   '#7f77dd',
@@ -49,6 +76,11 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
   layers,
   selectedId,
   documentName,
+  libraryNode,
+  slot,
+  slots,
+  previewMode,
+  onTogglePreview,
   onDocumentNameChange,
   onSelect,
   onDeleteLayer,
@@ -56,6 +88,10 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
   onChange,
   onTextChange,
   onBoundsChange,
+  onMarkSlot,
+  onUnmarkSlot,
+  onRenameSlot,
+  onAnimationChange,
 }) => {
   const uploadRef = useRef<HTMLInputElement>(null);
   const bounds = {
@@ -71,6 +107,8 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
 
   return (
     <aside className="svg-editor-properties">
+      {libraryNode}
+
       <Panel title="Documento">
         <input
           className="svg-editor-small-input wide"
@@ -204,6 +242,73 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
             />
           </label>
         )}
+      </Panel>
+
+      {properties && (
+        <Panel title="Slot do modelo">
+          <p className="svg-editor-muted">
+            Marque este espaço como imagem, texto ou ícone — o modelo preenche na cena.
+          </p>
+          <div className="svg-editor-color-row">
+            {(['image', 'text', 'icon'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                className="svg-editor-mini-button"
+                aria-pressed={slot?.type === type}
+                style={slot?.type === type ? { background: '#7f77dd', color: '#fff' } : undefined}
+                onClick={() => onMarkSlot(type)}
+              >
+                {SLOT_LABELS[type]}
+              </button>
+            ))}
+          </div>
+          {slot && (
+            <>
+              <label className="svg-editor-stack-field">
+                <span>Nome do slot</span>
+                <input
+                  className="svg-editor-small-input wide"
+                  value={slot.name}
+                  onChange={(event) => onRenameSlot(event.target.value)}
+                  aria-label="Nome do slot"
+                />
+              </label>
+              <button type="button" className="svg-editor-mini-button wide" onClick={onUnmarkSlot}>
+                Remover marcação de slot
+              </button>
+              <SlotAnimationEditor animation={slot.animation} onChange={onAnimationChange} />
+            </>
+          )}
+        </Panel>
+      )}
+
+      <Panel title={`Slots (${slots.length})`}>
+        <div className="svg-editor-layers">
+          {slots.length === 0 && <span className="svg-editor-muted">Nenhum slot marcado</span>}
+          {slots.map((entry) => (
+            <button
+              type="button"
+              key={entry.id}
+              className={selectedId === entry.id ? 'selected' : ''}
+              onClick={() => onSelect(entry.id)}
+            >
+              <span className="svg-editor-layer-icon">▣</span>
+              <span>{entry.name}</span>
+              <small>{SLOT_LABELS[entry.type]}</small>
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="svg-editor-mini-button wide"
+          disabled={slots.length === 0}
+          aria-pressed={previewMode}
+          style={previewMode ? { background: '#7f77dd', color: '#fff' } : undefined}
+          onClick={onTogglePreview}
+        >
+          {previewMode ? 'Voltar a editar' : 'Pré-visualizar preenchido'}
+        </button>
       </Panel>
 
       <Panel title={`Camadas (${layers.length})`}>

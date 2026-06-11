@@ -1,4 +1,5 @@
-import type { SvgElementProperties, SvgLayer } from './types';
+import type { SvgElementProperties, SvgLayer, SlotType, TemplateSlot, TemplateSlotMeta } from './types';
+import type { SlotAnimation } from './slotAnimation';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -93,6 +94,10 @@ const ALLOWED_ATTRIBUTES = new Set([
   'mode',
   'values',
   'type',
+  // Marca um elemento como espaço parametrizável de um modelo de cena.
+  // Conteúdo: JSON { type, name }. Tratado como texto comum (não-URL) pelo
+  // sanitizer, então sobrevive ao round-trip de import/export.
+  'data-slot',
 ]);
 
 const URL_ATTRIBUTES = new Set(['fill', 'stroke', 'clip-path', 'mask', 'filter']);
@@ -416,4 +421,110 @@ export const translateSvgElement = (markup: string, id: string, dx: number, dy: 
   const transform = element.getAttribute('transform') || '';
   element.setAttribute('transform', `translate(${dx} ${dy}) ${transform}`.trim());
   return serialize(document);
+};
+
+// ── Slots de modelo de cena ──────────────────────────────────────────────────
+// Um slot é um elemento comum do SVG marcado com `data-slot`. A geometria do
+// slot é derivada do próprio elemento (mesmo cálculo das propriedades), então
+// não há fonte de verdade duplicada: o markup é o template.
+
+const SLOT_TYPES = new Set<SlotType>(['image', 'text', 'icon']);
+
+const defaultSlotName = (type: SlotType): string =>
+  ({ image: 'Imagem', text: 'Texto', icon: 'Ícone' }[type]);
+
+const numberOrUndefined = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const parseAnimation = (raw: unknown): SlotAnimation | undefined => {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const data = raw as Record<string, unknown>;
+  if (typeof data.enter !== 'string' || typeof data.exit !== 'string') return undefined;
+  return {
+    enter: data.enter as SlotAnimation['enter'],
+    exit: data.exit as SlotAnimation['exit'],
+    startSeconds: numberOrUndefined(data.startSeconds),
+    endSeconds: numberOrUndefined(data.endSeconds),
+    enterDurationSeconds: numberOrUndefined(data.enterDurationSeconds),
+    exitDurationSeconds: numberOrUndefined(data.exitDurationSeconds),
+  };
+};
+
+const parseSlotMeta = (raw: string | null): TemplateSlotMeta | null => {
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw) as Partial<TemplateSlotMeta>;
+    if (!data || !data.type || !SLOT_TYPES.has(data.type)) return null;
+    const name =
+      typeof data.name === 'string' && data.name.trim()
+        ? data.name.trim()
+        : defaultSlotName(data.type);
+    const animation = parseAnimation(data.animation);
+    return animation ? { type: data.type, name, animation } : { type: data.type, name };
+  } catch {
+    return null;
+  }
+};
+
+/** Marca o elemento `id` como slot (ou atualiza tipo/nome/animação de um slot existente). */
+export const markSlot = (markup: string, id: string, meta: TemplateSlotMeta): string => {
+  const document = parseSvg(markup);
+  const element = document.getElementById(id);
+  if (!element || !SLOT_TYPES.has(meta.type)) return markup;
+  const name = (meta.name || '').trim().slice(0, 80) || defaultSlotName(meta.type);
+  const payload: TemplateSlotMeta = { type: meta.type, name };
+  if (meta.animation) payload.animation = meta.animation;
+  element.setAttribute('data-slot', JSON.stringify(payload));
+  return serialize(document);
+};
+
+/** Remove a marcação de slot do elemento `id` (volta a ser desenho comum). */
+export const unmarkSlot = (markup: string, id: string): string => {
+  const document = parseSvg(markup);
+  document.getElementById(id)?.removeAttribute('data-slot');
+  return serialize(document);
+};
+
+/** Metadados de slot do elemento `id`, ou null se ele não for um slot. */
+export const getSlotMeta = (markup: string, id: string): TemplateSlotMeta | null => {
+  const element = parseSvg(markup).getElementById(id);
+  return element ? parseSlotMeta(element.getAttribute('data-slot')) : null;
+};
+
+/** Lista todos os slots do modelo, com geometria resolvida. */
+export const listSlots = (markup: string): TemplateSlot[] => {
+  const document = parseSvg(markup);
+  const slots: TemplateSlot[] = [];
+  document.documentElement.querySelectorAll('[data-slot]').forEach((element) => {
+    const meta = parseSlotMeta(element.getAttribute('data-slot'));
+    if (!meta || !element.id) return;
+    const bounds = getElementAttributeBounds(element);
+    slots.push({
+      id: element.id,
+      type: meta.type,
+      name: meta.name,
+      animation: meta.animation,
+      bounds: {
+        x: bounds.x ?? 0,
+        y: bounds.y ?? 0,
+        width: bounds.width ?? 0,
+        height: bounds.height ?? 0,
+      },
+    });
+  });
+  return slots;
+};
+
+/** Dimensões do viewBox do SVG (largura/altura em unidades de usuário). */
+export const parseViewBox = (markup: string): { width: number; height: number } | null => {
+  try {
+    const root = parseSvg(markup).documentElement;
+    const parts = (root.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+      return { width: parts[2], height: parts[3] };
+    }
+  } catch {
+    // markup inválido — sem viewBox
+  }
+  return null;
 };

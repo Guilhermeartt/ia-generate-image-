@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { Scene } from '../../types';
 import { aspectRatioLabel, modelLabelShort } from '../../utils/imageHelpers';
+import { listSlots } from '../svg-editor/svgDocument';
+import { resolveSlotContents } from '../svg-editor/templateBinding';
+import TemplateRenderer from '../svg-editor/TemplateRenderer';
 import ImageLoader from '../ImageLoader';
 import Spinner from '../ui/Spinner';
 import ImgBtn from '../ui/ImgBtn';
@@ -22,6 +25,8 @@ interface ReferenceData {
 
 interface SceneCardImagePanelProps {
   scene: Scene;
+  /** Markup do modelo aplicado à cena (se houver), para render composto. */
+  templateMarkup?: string | null;
   referenceData: ReferenceData;
   isBusy: boolean;
   busyMessage: string;
@@ -39,6 +44,7 @@ interface SceneCardImagePanelProps {
 
 const SceneCardImagePanel: React.FC<SceneCardImagePanelProps> = ({
   scene,
+  templateMarkup,
   referenceData,
   isBusy,
   busyMessage,
@@ -53,6 +59,17 @@ const SceneCardImagePanel: React.FC<SceneCardImagePanelProps> = ({
   onToggleRefTooltip,
   onCloseRefTooltip,
 }) => {
+  // Conteúdo dos slots quando há um modelo aplicado. Hook no topo (não pode ficar
+  // dentro dos branches de retorno).
+  const templateContents = useMemo(() => {
+    if (!templateMarkup) return null;
+    try {
+      return resolveSlotContents(listSlots(templateMarkup), scene, scene.templateOverrides);
+    } catch {
+      return null;
+    }
+  }, [templateMarkup, scene]);
+
   if (scene.imageUrl) {
     return (
       <div className="sc-img-frame">
@@ -62,7 +79,16 @@ const SceneCardImagePanel: React.FC<SceneCardImagePanelProps> = ({
           className="sc-img-button"
           aria-label={`Ampliar imagem da cena ${scene.original_location}`}
         >
-          <img src={scene.imageUrl} alt={`Visualização de ${scene.original_location}`} />
+          {templateMarkup && templateContents ? (
+            <TemplateRenderer
+              markup={templateMarkup}
+              contents={templateContents}
+              className="sc-template-render"
+              style={{ width: '100%', height: '100%', display: 'flex' }}
+            />
+          ) : (
+            <img src={scene.imageUrl} alt={`Visualização de ${scene.original_location}`} />
+          )}
         </button>
 
         {isBusy && <ImageLoader message={busyMessage} />}

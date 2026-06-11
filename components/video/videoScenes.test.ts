@@ -26,6 +26,17 @@ describe('createVideoScenes', () => {
     expect(result.map((item) => item.sceneId)).toEqual([2, 3]);
   });
 
+  it('propaga o templateId da cena para cada clipe', () => {
+    const result = createVideoScenes([
+      scene(1, { imageUrl: 'data:image/png;base64,main', templateId: 'tmpl_1' }),
+      scene(2, { imageUrl: 'data:image/png;base64,two' }),
+    ]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].templateId).toBe('tmpl_1');
+    expect(result[1].templateId).toBeUndefined();
+  });
+
   it('uses the first generated split when a scene has no main image', () => {
     const result = createVideoScenes([
       scene(1, {
