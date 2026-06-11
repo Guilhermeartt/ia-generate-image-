@@ -1,29 +1,72 @@
-import type { SvgElementProperties, SvgLayer, SlotType, TemplateSlot, TemplateSlotMeta } from './types';
+import type {
+  SvgElementProperties,
+  SvgLayer,
+  SlotType,
+  TemplateSlot,
+  TemplateSlotMeta,
+} from './types';
 import type { SlotAnimation } from './slotAnimation';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const ALLOWED_ELEMENTS = new Set([
   // estrutura
-  'svg', 'g', 'defs', 'symbol', 'use',
+  'svg',
+  'g',
+  'defs',
+  'symbol',
+  'use',
   // formas
-  'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
+  'path',
+  'rect',
+  'circle',
+  'ellipse',
+  'line',
+  'polyline',
+  'polygon',
   // texto
-  'text', 'tspan', 'textPath', 'style',
+  'text',
+  'tspan',
+  'textPath',
+  'style',
   // imagem embutida (href data:image/* ou #ref)
   'image',
   // pintura: gradientes e padrões
-  'linearGradient', 'radialGradient', 'stop', 'pattern',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+  'pattern',
   // recorte / máscara / marcadores
-  'clipPath', 'mask', 'marker',
+  'clipPath',
+  'mask',
+  'marker',
   // filtros e suas primitivas (efeitos)
   'filter',
-  'feGaussianBlur', 'feOffset', 'feBlend', 'feColorMatrix', 'feFlood',
-  'feComposite', 'feMerge', 'feMergeNode', 'feDropShadow', 'feMorphology',
-  'feTile', 'feTurbulence', 'feDisplacementMap', 'feComponentTransfer',
-  'feFuncR', 'feFuncG', 'feFuncB', 'feFuncA', 'feConvolveMatrix',
-  'feSpecularLighting', 'feDiffuseLighting', 'feDistantLight',
-  'fePointLight', 'feSpotLight', 'feImage',
+  'feGaussianBlur',
+  'feOffset',
+  'feBlend',
+  'feColorMatrix',
+  'feFlood',
+  'feComposite',
+  'feMerge',
+  'feMergeNode',
+  'feDropShadow',
+  'feMorphology',
+  'feTile',
+  'feTurbulence',
+  'feDisplacementMap',
+  'feComponentTransfer',
+  'feFuncR',
+  'feFuncG',
+  'feFuncB',
+  'feFuncA',
+  'feConvolveMatrix',
+  'feSpecularLighting',
+  'feDiffuseLighting',
+  'feDistantLight',
+  'fePointLight',
+  'feSpotLight',
+  'feImage',
 ]);
 
 const EDITABLE_ELEMENTS = new Set([
@@ -95,33 +138,107 @@ const ALLOWED_ATTRIBUTES = new Set([
   'values',
   'type',
   // ── pintura / cor / blend ──
-  'color', 'paint-order', 'flood-color', 'flood-opacity', 'lighting-color',
-  'color-interpolation', 'color-interpolation-filters', 'mix-blend-mode',
-  'isolation', 'clip-rule', 'shape-rendering', 'image-rendering', 'overflow',
+  'color',
+  'paint-order',
+  'flood-color',
+  'flood-opacity',
+  'lighting-color',
+  'color-interpolation',
+  'color-interpolation-filters',
+  'mix-blend-mode',
+  'isolation',
+  'clip-rule',
+  'shape-rendering',
+  'image-rendering',
+  'overflow',
   'vector-effect',
   // ── contorno ──
-  'stroke-miterlimit', 'stroke-dashoffset',
+  'stroke-miterlimit',
+  'stroke-dashoffset',
   // ── texto ──
-  'font-style', 'font-variant', 'font-stretch', 'letter-spacing', 'word-spacing',
-  'text-decoration', 'writing-mode', 'text-rendering', 'baseline-shift',
-  'alignment-baseline', 'rotate', 'textLength', 'lengthAdjust', 'startOffset',
-  'side', 'method', 'spacing', 'white-space',
+  'font-style',
+  'font-variant',
+  'font-stretch',
+  'letter-spacing',
+  'word-spacing',
+  'text-decoration',
+  'writing-mode',
+  'text-rendering',
+  'baseline-shift',
+  'alignment-baseline',
+  'rotate',
+  'textLength',
+  'lengthAdjust',
+  'startOffset',
+  'side',
+  'method',
+  'spacing',
+  'white-space',
   // ── geometria / estrutura ──
-  'pathLength', 'preserveAspectRatio', 'refX', 'refY', 'fx', 'fy', 'fr',
+  'pathLength',
+  'preserveAspectRatio',
+  'refX',
+  'refY',
+  'fx',
+  'fy',
+  'fr',
   // ── marcadores ──
-  'marker-start', 'marker-mid', 'marker-end', 'marker',
-  'markerWidth', 'markerHeight', 'markerUnits', 'orient',
+  'marker-start',
+  'marker-mid',
+  'marker-end',
+  'marker',
+  'markerWidth',
+  'markerHeight',
+  'markerUnits',
+  'orient',
   // ── recorte / máscara / padrão ──
-  'clipPathUnits', 'maskUnits', 'maskContentUnits',
-  'patternUnits', 'patternContentUnits', 'patternTransform',
+  'clipPathUnits',
+  'maskUnits',
+  'maskContentUnits',
+  'patternUnits',
+  'patternContentUnits',
+  'patternTransform',
   // ── filtros ──
-  'filterUnits', 'primitiveUnits', 'operator', 'k1', 'k2', 'k3', 'k4', 'scale',
-  'xChannelSelector', 'yChannelSelector', 'radius', 'numOctaves', 'baseFrequency',
-  'seed', 'stitchTiles', 'tableValues', 'slope', 'intercept', 'amplitude',
-  'exponent', 'surfaceScale', 'specularConstant', 'specularExponent',
-  'diffuseConstant', 'kernelMatrix', 'order', 'divisor', 'bias', 'targetX',
-  'targetY', 'edgeMode', 'preserveAlpha', 'kernelUnitLength', 'azimuth',
-  'elevation', 'pointsAtX', 'pointsAtY', 'pointsAtZ', 'limitingConeAngle', 'z',
+  'filterUnits',
+  'primitiveUnits',
+  'operator',
+  'k1',
+  'k2',
+  'k3',
+  'k4',
+  'scale',
+  'xChannelSelector',
+  'yChannelSelector',
+  'radius',
+  'numOctaves',
+  'baseFrequency',
+  'seed',
+  'stitchTiles',
+  'tableValues',
+  'slope',
+  'intercept',
+  'amplitude',
+  'exponent',
+  'surfaceScale',
+  'specularConstant',
+  'specularExponent',
+  'diffuseConstant',
+  'kernelMatrix',
+  'order',
+  'divisor',
+  'bias',
+  'targetX',
+  'targetY',
+  'edgeMode',
+  'preserveAlpha',
+  'kernelUnitLength',
+  'azimuth',
+  'elevation',
+  'pointsAtX',
+  'pointsAtY',
+  'pointsAtZ',
+  'limitingConeAngle',
+  'z',
   // Marca um elemento como espaço parametrizável de um modelo de cena.
   // Conteúdo: JSON { type, name }. Tratado como texto comum (não-URL) pelo
   // sanitizer, então sobrevive ao round-trip de import/export.
@@ -131,8 +248,15 @@ const ALLOWED_ATTRIBUTES = new Set([
 ]);
 
 const URL_ATTRIBUTES = new Set([
-  'fill', 'stroke', 'clip-path', 'mask', 'filter',
-  'marker-start', 'marker-mid', 'marker-end', 'marker',
+  'fill',
+  'stroke',
+  'clip-path',
+  'mask',
+  'filter',
+  'marker-start',
+  'marker-mid',
+  'marker-end',
+  'marker',
 ]);
 
 const CSS_PRESENTATION_ATTRIBUTES = new Set([
@@ -215,13 +339,14 @@ const INTERNAL_REF = /^#[A-Za-z_][\w.:-]*$/;
 const sanitizeHref = (value: string): string | null => {
   const v = value.trim();
   if (INTERNAL_REF.test(v)) return v;
-  if (/^data:image\/(png|jpe?g|gif|webp|bmp);/i.test(v)) return v;
+  if (/^data:image\/(png|jpe?g|gif|webp|bmp);base64,[A-Za-z0-9+/=\s]+$/i.test(v)) return v;
   return null;
 };
 
 // style inline: mantém propriedades de apresentação (fill, filter, blend, etc.),
 // mas rejeita o atributo inteiro se houver token perigoso ou url() não-interna.
-const STYLE_BLOCKLIST = /expression\(|javascript:|behaviou?r\s*:|-moz-binding|@import|<\/|url\(\s*['"]?\s*(?!#)/i;
+const STYLE_BLOCKLIST =
+  /expression\(|javascript:|behaviou?r\s*:|-moz-binding|@import|<\/|url\(\s*['"]?\s*(?!#)/i;
 const sanitizeStyle = (value: string): string | null => {
   if (STYLE_BLOCKLIST.test(value)) return null;
   const trimmed = value.trim();
@@ -237,8 +362,19 @@ const sanitizeEmbeddedFontCss = (value: string): string | null => {
       /src\s*:\s*url\(\s*["']?(data:font\/(ttf|otf|woff2?);base64,[A-Za-z0-9+/=]+)["']?\s*\)\s*format\(\s*["']?(truetype|opentype|woff2?)["']?\s*\)/i,
     );
     if (!family || !/^[\w -]{1,80}$/.test(family) || !source) continue;
+    const expectedFormat: Record<string, string> = {
+      ttf: 'truetype',
+      otf: 'opentype',
+      woff: 'woff',
+      woff2: 'woff2',
+    };
+    if (expectedFormat[source[2].toLowerCase()] !== source[3].toLowerCase()) continue;
+    const rawWeight = body.match(/font-weight\s*:\s*(\d{3}|normal|bold)/i)?.[1] ?? '400';
+    const weight = rawWeight === 'normal' ? '400' : rawWeight === 'bold' ? '700' : rawWeight;
+    if (!/^[1-9]00$/.test(weight)) continue;
+    const style = body.match(/font-style\s*:\s*(normal|italic|oblique)/i)?.[1] ?? 'normal';
     rules.push(
-      `@font-face{font-family:"${family}";src:url("${source[1]}") format("${source[3]}");font-style:normal;font-display:block;}`,
+      `@font-face{font-family:"${family}";src:url("${source[1]}") format("${source[3]}");font-weight:${weight};font-style:${style};font-display:block;}`,
     );
   }
   return rules.length > 0 ? rules.join('') : null;
@@ -540,20 +676,14 @@ export const getSvgElementProperties = (
     lengthAdjust: element.getAttribute('lengthAdjust') || 'spacing',
     structuredText:
       element.localName === 'text' &&
-      Array.from(element.children).some((child) =>
-        ['tspan', 'textPath'].includes(child.localName),
-      ),
+      Array.from(element.children).some((child) => ['tspan', 'textPath'].includes(child.localName)),
     transform,
     rotation: rotateMatch ? Number.parseFloat(rotateMatch[1]) || 0 : 0,
     ...bounds,
   };
 };
 
-const effectivePresentationValue = (
-  element: Element,
-  name: string,
-  fallback: string,
-): string => {
+const effectivePresentationValue = (element: Element, name: string, fallback: string): string => {
   let current: Element | null = element;
   while (current) {
     const direct = current.getAttribute(name);
@@ -652,7 +782,9 @@ export const updateSvgText = (markup: string, id: string, text: string): string 
   const document = parseSvg(markup);
   const element = document.getElementById(id);
   if (!element || element.localName !== 'text') return markup;
-  if (Array.from(element.children).some((child) => ['tspan', 'textPath'].includes(child.localName))) {
+  if (
+    Array.from(element.children).some((child) => ['tspan', 'textPath'].includes(child.localName))
+  ) {
     return markup;
   }
   element.textContent = text;
@@ -817,11 +949,8 @@ export const translateSvgElement = (markup: string, id: string, dx: number, dy: 
   return serialize(document);
 };
 
-export const transformSvgElement = (
-  markup: string,
-  id: string,
-  transform: string,
-): string => updateSvgElement(markup, id, { transform });
+export const transformSvgElement = (markup: string, id: string, transform: string): string =>
+  updateSvgElement(markup, id, { transform });
 
 // ── Slots de modelo de cena ──────────────────────────────────────────────────
 // Um slot é um elemento comum do SVG marcado com `data-slot`. A geometria do
@@ -831,7 +960,7 @@ export const transformSvgElement = (
 const SLOT_TYPES = new Set<SlotType>(['image', 'text', 'icon']);
 
 const defaultSlotName = (type: SlotType): string =>
-  ({ image: 'Imagem', text: 'Texto', icon: 'Ícone' }[type]);
+  ({ image: 'Imagem', text: 'Texto', icon: 'Ícone' })[type];
 
 const numberOrUndefined = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;

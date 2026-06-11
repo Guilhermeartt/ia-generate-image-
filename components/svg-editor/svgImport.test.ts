@@ -32,4 +32,37 @@ describe('prepareSvgImport', () => {
     expect(result.markup).toContain('data-embedded-fonts="true"');
     expect(result.markup).toContain('data:font/ttf;base64,');
   });
+
+  it('infere o MIME da imagem pela extensão quando o navegador não o informa', async () => {
+    const image = new File(['imagem'], 'foto.jpg');
+    const result = await prepareSvgImport(
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="foto.jpg"/></svg>',
+      [image],
+    );
+
+    expect(result.embeddedImages).toBe(1);
+    expect(result.markup).toContain('data:image/jpeg;base64,');
+  });
+
+  it('tolera escapes inválidos no caminho do vínculo', async () => {
+    const image = new File(['imagem'], 'foto%ZZ.png', { type: 'image/png' });
+    const result = await prepareSvgImport(
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="../foto%ZZ.png"/></svg>',
+      [image],
+    );
+
+    expect(result.embeddedImages).toBe(1);
+  });
+
+  it('associa variantes de fonte à família usada e preserva peso e estilo', async () => {
+    const font = new File(['fonte'], 'Figtree-BlackItalic.ttf');
+    const result = await prepareSvgImport(
+      '<svg xmlns="http://www.w3.org/2000/svg"><text font-family="Figtree">Título</text></svg>',
+      [font],
+    );
+
+    expect(result.markup).toContain('font-family:"Figtree"');
+    expect(result.markup).toContain('font-weight:900');
+    expect(result.markup).toContain('font-style:italic');
+  });
 });

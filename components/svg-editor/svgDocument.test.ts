@@ -300,7 +300,7 @@ describe('sanitizeSvg — import fiel e seguro', () => {
       <svg xmlns="http://www.w3.org/2000/svg">
         <defs>
           <style data-embedded-fonts="true">
-            @font-face{font-family:"Figtree-Black";src:url("data:font/ttf;base64,QUJD") format("truetype");font-display:block}
+            @font-face{font-family:"Figtree-Black";src:url("data:font/ttf;base64,QUJD") format("truetype");font-weight:900;font-style:italic;font-display:block}
           </style>
           <style>.evil{fill:red}</style>
         </defs>
@@ -309,7 +309,24 @@ describe('sanitizeSvg — import fiel e seguro', () => {
     `);
     expect(result).toContain('data-embedded-fonts="true"');
     expect(result).toContain('data:font/ttf;base64,QUJD');
+    expect(result).toContain('font-weight:900');
+    expect(result).toContain('font-style:italic');
     expect(result).not.toContain('.evil');
+  });
+
+  it('descarta fontes com MIME e formato incompatíveis', () => {
+    const result = sanitizeSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <style data-embedded-fonts="true">
+            @font-face{font-family:"Teste";src:url("data:font/ttf;base64,QUJD") format("woff2")}
+          </style>
+        </defs>
+        <text>Texto</text>
+      </svg>
+    `);
+    expect(result).not.toContain('data-embedded-fonts');
+    expect(result).not.toContain('@font-face');
   });
 
   it('preserva gradientes, filtros, blend mode, style seguro, use e imagem embutida', () => {
@@ -364,6 +381,14 @@ describe('sanitizeSvg — import fiel e seguro', () => {
       '<svg viewBox="0 0 10 10"><image href="data:image/png;base64,iVBORw0KGgo=" width="10" height="10"/></svg>',
     );
     expect(result).toContain('data:image/png;base64');
+  });
+
+  it('remove data:image raster que não esteja codificada em base64', () => {
+    const result = sanitizeSvg(
+      '<svg viewBox="0 0 10 10"><image href="data:image/png,&lt;script&gt;alert(1)&lt;/script&gt;"/></svg>',
+    );
+    expect(result).not.toContain('data:image/png');
+    expect(result).not.toContain('script');
   });
 
   it('continua removendo script, handlers e foreignObject', () => {

@@ -82,8 +82,7 @@ const SvgEditor: React.FC = () => {
       if (before === after) return;
       const now = Date.now();
       const key = `${label}:${nextSelectedId ?? selectedId ?? ''}`;
-      const coalesce =
-        lastCommitRef.current?.key === key && now - lastCommitRef.current.time < 700;
+      const coalesce = lastCommitRef.current?.key === key && now - lastCommitRef.current.time < 700;
       setHistory((current) => ({
         past: coalesce ? current.past : [...current.past, before].slice(-100),
         future: [],
@@ -223,16 +222,16 @@ const SvgEditor: React.FC = () => {
         setDocumentState({ name: file.name.replace(/\.svg$/i, '') || 'ilustracao', markup });
         setSelectedId(null);
         const embedded = [
-          prepared.embeddedImages > 0
-            ? `${prepared.embeddedImages} imagem(ns) incorporada(s)`
-            : '',
+          prepared.embeddedImages > 0 ? `${prepared.embeddedImages} imagem(ns) incorporada(s)` : '',
           prepared.embeddedFonts > 0 ? `${prepared.embeddedFonts} fonte(s) incorporada(s)` : '',
         ]
           .filter(Boolean)
           .join(' e ');
         const missing =
           prepared.unresolvedImages.length > 0
-            ? ` Faltam: ${prepared.unresolvedImages.map((href) => href.split('/').pop()).join(', ')}.`
+            ? ` Vínculos não encontrados: ${prepared.unresolvedImages
+                .map((href) => href.replaceAll('\\', '/').split('/').pop())
+                .join(', ')}. Selecione esses arquivos junto com o SVG.`
             : '';
         setMessage(
           `"${file.name}" importado com segurança.${embedded ? ` ${embedded}.` : ''}${missing}`,
