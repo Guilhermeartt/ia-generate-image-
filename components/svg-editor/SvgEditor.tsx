@@ -5,6 +5,7 @@ import SvgTemplateLibrary from './SvgTemplateLibrary';
 import SvgToolbar from './SvgToolbar';
 import AnimatedTemplatePreview from './AnimatedTemplatePreview';
 import { buildPreviewContents } from './templateBinding';
+import { prepareSvgImport } from './svgImport';
 import type { SlotAnimation } from './slotAnimation';
 import type { SlotType, SvgCamera, SvgEditorDocument, SvgTool } from './types';
 import {
@@ -205,14 +206,37 @@ const SvgEditor: React.FC = () => {
     [applyChange, documentState.markup, selectedId],
   );
 
-  const importFile = useCallback(
-    async (file: File) => {
+  const importFiles = useCallback(
+    async (files: File[]) => {
       try {
-        const markup = sanitizeSvg(await file.text());
+        const file = files.find(
+          (candidate) =>
+            candidate.type === 'image/svg+xml' || candidate.name.toLowerCase().endsWith('.svg'),
+        );
+        if (!file) throw new Error('Selecione um arquivo SVG.');
+        const prepared = await prepareSvgImport(
+          await file.text(),
+          files.filter((candidate) => candidate !== file),
+        );
+        const markup = sanitizeSvg(prepared.markup);
         commit(documentState.markup, markup, 'Importar SVG');
         setDocumentState({ name: file.name.replace(/\.svg$/i, '') || 'ilustracao', markup });
         setSelectedId(null);
-        setMessage(`"${file.name}" importado com segurança.`);
+        const embedded = [
+          prepared.embeddedImages > 0
+            ? `${prepared.embeddedImages} imagem(ns) incorporada(s)`
+            : '',
+          prepared.embeddedFonts > 0 ? `${prepared.embeddedFonts} fonte(s) incorporada(s)` : '',
+        ]
+          .filter(Boolean)
+          .join(' e ');
+        const missing =
+          prepared.unresolvedImages.length > 0
+            ? ` Faltam: ${prepared.unresolvedImages.map((href) => href.split('/').pop()).join(', ')}.`
+            : '';
+        setMessage(
+          `"${file.name}" importado com segurança.${embedded ? ` ${embedded}.` : ''}${missing}`,
+        );
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Não foi possível importar o SVG.');
       }
@@ -313,8 +337,10 @@ const SvgEditor: React.FC = () => {
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
-        const file = event.dataTransfer.files[0];
-        if (file?.name.toLowerCase().endsWith('.svg')) void importFile(file);
+        const files = Array.from(event.dataTransfer.files);
+        if (files.some((file) => file.name.toLowerCase().endsWith('.svg'))) {
+          void importFiles(files);
+        }
       }}
     >
       <SvgToolbar
@@ -323,7 +349,7 @@ const SvgEditor: React.FC = () => {
         canRedo={history.future.length > 0}
         hasSelection={!!selectedId}
         onToolChange={setTool}
-        onUpload={(file) => void importFile(file)}
+        onUpload={(files) => void importFiles(files)}
         onUndo={undo}
         onRedo={redo}
         onDuplicate={duplicateSelected}
@@ -401,7 +427,7 @@ const SvgEditor: React.FC = () => {
             );
             if (locked && selectedId === id) setSelectedId(null);
           }}
-          onUpload={(file) => void importFile(file)}
+          onUpload={(files) => void importFiles(files)}
           onChange={(attributes, label) => {
             if (!selectedId) return;
             applyChange(

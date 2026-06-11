@@ -9,7 +9,7 @@ const ALLOWED_ELEMENTS = new Set([
   // formas
   'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
   // texto
-  'text', 'tspan', 'textPath',
+  'text', 'tspan', 'textPath', 'style',
   // imagem embutida (href data:image/* ou #ref)
   'image',
   // pintura: gradientes e padrões
@@ -127,6 +127,7 @@ const ALLOWED_ATTRIBUTES = new Set([
   // sanitizer, então sobrevive ao round-trip de import/export.
   'data-slot',
   'data-editor-locked',
+  'data-embedded-fonts',
 ]);
 
 const URL_ATTRIBUTES = new Set([
@@ -225,6 +226,22 @@ const sanitizeStyle = (value: string): string | null => {
   if (STYLE_BLOCKLIST.test(value)) return null;
   const trimmed = value.trim();
   return trimmed || null;
+};
+
+const sanitizeEmbeddedFontCss = (value: string): string | null => {
+  const rules: string[] = [];
+  for (const match of value.matchAll(/@font-face\s*\{([^}]+)\}/gi)) {
+    const body = match[1];
+    const family = body.match(/font-family\s*:\s*["']?([^;"'}]+)["']?/i)?.[1]?.trim();
+    const source = body.match(
+      /src\s*:\s*url\(\s*["']?(data:font\/(ttf|otf|woff2?);base64,[A-Za-z0-9+/=]+)["']?\s*\)\s*format\(\s*["']?(truetype|opentype|woff2?)["']?\s*\)/i,
+    );
+    if (!family || !/^[\w -]{1,80}$/.test(family) || !source) continue;
+    rules.push(
+      `@font-face{font-family:"${family}";src:url("${source[1]}") format("${source[3]}");font-style:normal;font-display:block;}`,
+    );
+  }
+  return rules.length > 0 ? rules.join('') : null;
 };
 
 interface CssDeclaration {
@@ -367,6 +384,16 @@ const copySafeElement = (
 ): Element | null => {
   if (!ALLOWED_ELEMENTS.has(source.localName)) return null;
 
+  if (source.localName === 'style') {
+    if (source.getAttribute('data-embedded-fonts') !== 'true') return null;
+    const css = sanitizeEmbeddedFontCss(source.textContent || '');
+    if (!css) return null;
+    const style = targetDocument.createElementNS(SVG_NS, 'style');
+    style.setAttribute('data-embedded-fonts', 'true');
+    style.appendChild(targetDocument.createTextNode(css));
+    return style;
+  }
+
   const target = targetDocument.createElementNS(SVG_NS, source.localName);
   for (const attribute of Array.from(source.attributes)) {
     const name = attribute.name;
@@ -407,7 +434,10 @@ const copySafeElement = (
     if (child.nodeType === Node.ELEMENT_NODE) {
       const copied = copySafeElement(child as Element, targetDocument, usedIds);
       if (copied) target.appendChild(copied);
-    } else if (child.nodeType === Node.TEXT_NODE && ['text', 'tspan', 'textPath'].includes(source.localName)) {
+    } else if (
+      child.nodeType === Node.TEXT_NODE &&
+      ['text', 'tspan', 'textPath', 'style'].includes(source.localName)
+    ) {
       target.appendChild(targetDocument.createTextNode(child.textContent ?? ''));
     }
   }

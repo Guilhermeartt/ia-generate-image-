@@ -24,6 +24,8 @@ Entregue neste marco:
 - autosave local versionado;
 - dimensões personalizadas do modelo;
 - mutações com a mesma validação de segurança da importação;
+- importação em lote de SVG, imagens e fontes vinculadas pelo Illustrator;
+- incorporação de JPEG/PNG/WebP e fontes TTF/OTF/WOFF no SVG exportado;
 - sanitização de ícones e URLs de imagem do renderizador de templates;
 - duplicação com remapeamento de IDs e referências internas;
 - proteção de textos estruturados com `tspan` e `textPath`;
@@ -247,6 +249,8 @@ O build gera `SvgEditor` como chunk lazy independente, atualmente com cerca de
 ## Regras para manutenção
 
 - Toda importação passa por `sanitizeSvg`.
+- SVGs com links externos devem ser importados junto com suas imagens/fontes;
+  o editor resolve os arquivos por nome e os incorpora como data URI.
 - Elementos de interface nunca são serializados no documento.
 - Uma ação do usuário deve produzir no máximo uma entrada no histórico.
 - Transformações devem continuar válidas após exportar e reimportar.
@@ -265,6 +269,8 @@ O build gera `SvgEditor` como chunk lazy independente, atualmente com cerca de
 - Segurança centralizada também para mutações, ícones e imagens de templates.
 - Duplicação passou a remapear IDs e referências `url(#id)`/`href`.
 - Textos estruturados passaram a ser protegidos contra edição destrutiva.
+- Importação do Illustrator passou a aceitar o SVG junto com a pasta Links,
+  incorporando imagens e fontes para produzir documentos autocontidos.
 - A importação agora materializa regras CSS estáticas seguras de classes e IDs
   como atributos SVG, preservando cores, contornos e tipografia sem manter
   stylesheets capazes de afetar a interface.

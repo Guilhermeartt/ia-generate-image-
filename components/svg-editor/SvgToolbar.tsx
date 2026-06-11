@@ -7,7 +7,7 @@ interface SvgToolbarProps {
   canRedo: boolean;
   hasSelection: boolean;
   onToolChange: (tool: SvgTool) => void;
-  onUpload: (file: File) => void;
+  onUpload: (files: File[]) => void;
   onUndo: () => void;
   onRedo: () => void;
   onDuplicate: () => void;
@@ -157,10 +157,11 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
         ref={inputRef}
         className="hidden"
         type="file"
-        accept=".svg,image/svg+xml"
+        accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,.ttf,.otf,.woff,.woff2"
+        multiple
         onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) onUpload(file);
+          const files = Array.from(event.target.files ?? []);
+          if (files.length > 0) onUpload(files);
           event.currentTarget.value = '';
         }}
       />

@@ -295,6 +295,23 @@ describe('sanitizeSvg — import fiel e seguro', () => {
     expect(getSvgElementProperties(result, 'icon')?.fill).toBe('#336699');
   });
 
+  it('preserva apenas fontes embutidas seguras em style dedicado', () => {
+    const result = sanitizeSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <style data-embedded-fonts="true">
+            @font-face{font-family:"Figtree-Black";src:url("data:font/ttf;base64,QUJD") format("truetype");font-display:block}
+          </style>
+          <style>.evil{fill:red}</style>
+        </defs>
+        <text font-family="Figtree-Black">Título</text>
+      </svg>
+    `);
+    expect(result).toContain('data-embedded-fonts="true"');
+    expect(result).toContain('data:font/ttf;base64,QUJD');
+    expect(result).not.toContain('.evil');
+  });
+
   it('preserva gradientes, filtros, blend mode, style seguro, use e imagem embutida', () => {
     const result = sanitizeSvg(`
       <svg viewBox="0 0 100 100">

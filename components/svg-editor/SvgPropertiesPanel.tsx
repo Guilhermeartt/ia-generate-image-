@@ -32,7 +32,7 @@ interface SvgPropertiesPanelProps {
   onDeleteLayer: (id: string) => void;
   onToggleLayerVisibility: (id: string, visible: boolean) => void;
   onToggleLayerLocked: (id: string, locked: boolean) => void;
-  onUpload: (file: File) => void;
+  onUpload: (files: File[]) => void;
   onChange: (attributes: Record<string, string | number | null>, label: string) => void;
   onTextChange: (text: string) => void;
   onBoundsChange: (bounds: { x: number; y: number; width: number; height: number }) => void;
@@ -539,16 +539,17 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
           className="svg-editor-upload-zone"
           onClick={() => uploadRef.current?.click()}
         >
-          ↑<span>Clique ou arraste um .svg</span>
+          ↑<span>Selecione o SVG junto com imagens e fontes vinculadas</span>
         </button>
         <input
           ref={uploadRef}
           type="file"
           className="hidden"
-          accept=".svg,image/svg+xml"
+          accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,.ttf,.otf,.woff,.woff2"
+          multiple
           onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) onUpload(file);
+            const files = Array.from(event.target.files ?? []);
+            if (files.length > 0) onUpload(files);
             event.currentTarget.value = '';
           }}
         />
