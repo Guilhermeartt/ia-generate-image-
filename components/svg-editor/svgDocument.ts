@@ -4,28 +4,26 @@ import type { SlotAnimation } from './slotAnimation';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const ALLOWED_ELEMENTS = new Set([
-  'svg',
-  'g',
-  'defs',
-  'path',
-  'rect',
-  'circle',
-  'ellipse',
-  'line',
-  'polyline',
-  'polygon',
-  'text',
-  'tspan',
-  'linearGradient',
-  'radialGradient',
-  'stop',
-  'clipPath',
-  'mask',
+  // estrutura
+  'svg', 'g', 'defs', 'symbol', 'use',
+  // formas
+  'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
+  // texto
+  'text', 'tspan', 'textPath',
+  // imagem embutida (href data:image/* ou #ref)
+  'image',
+  // pintura: gradientes e padrões
+  'linearGradient', 'radialGradient', 'stop', 'pattern',
+  // recorte / máscara / marcadores
+  'clipPath', 'mask', 'marker',
+  // filtros e suas primitivas (efeitos)
   'filter',
-  'feGaussianBlur',
-  'feOffset',
-  'feBlend',
-  'feColorMatrix',
+  'feGaussianBlur', 'feOffset', 'feBlend', 'feColorMatrix', 'feFlood',
+  'feComposite', 'feMerge', 'feMergeNode', 'feDropShadow', 'feMorphology',
+  'feTile', 'feTurbulence', 'feDisplacementMap', 'feComponentTransfer',
+  'feFuncR', 'feFuncG', 'feFuncB', 'feFuncA', 'feConvolveMatrix',
+  'feSpecularLighting', 'feDiffuseLighting', 'feDistantLight',
+  'fePointLight', 'feSpotLight', 'feImage',
 ]);
 
 const EDITABLE_ELEMENTS = new Set([
@@ -38,6 +36,7 @@ const EDITABLE_ELEMENTS = new Set([
   'polyline',
   'polygon',
   'text',
+  'image',
 ]);
 
 const ALLOWED_ATTRIBUTES = new Set([
@@ -94,14 +93,65 @@ const ALLOWED_ATTRIBUTES = new Set([
   'mode',
   'values',
   'type',
+  // ── pintura / cor / blend ──
+  'color', 'paint-order', 'flood-color', 'flood-opacity', 'lighting-color',
+  'color-interpolation', 'color-interpolation-filters', 'mix-blend-mode',
+  'isolation', 'clip-rule', 'shape-rendering', 'image-rendering', 'overflow',
+  'vector-effect',
+  // ── contorno ──
+  'stroke-miterlimit', 'stroke-dashoffset',
+  // ── texto ──
+  'font-style', 'font-variant', 'font-stretch', 'letter-spacing', 'word-spacing',
+  'text-decoration', 'writing-mode', 'text-rendering', 'baseline-shift',
+  'alignment-baseline', 'rotate', 'textLength', 'lengthAdjust', 'startOffset',
+  'side', 'method', 'spacing', 'white-space',
+  // ── geometria / estrutura ──
+  'pathLength', 'preserveAspectRatio', 'refX', 'refY', 'fx', 'fy', 'fr',
+  // ── marcadores ──
+  'marker-start', 'marker-mid', 'marker-end', 'marker',
+  'markerWidth', 'markerHeight', 'markerUnits', 'orient',
+  // ── recorte / máscara / padrão ──
+  'clipPathUnits', 'maskUnits', 'maskContentUnits',
+  'patternUnits', 'patternContentUnits', 'patternTransform',
+  // ── filtros ──
+  'filterUnits', 'primitiveUnits', 'operator', 'k1', 'k2', 'k3', 'k4', 'scale',
+  'xChannelSelector', 'yChannelSelector', 'radius', 'numOctaves', 'baseFrequency',
+  'seed', 'stitchTiles', 'tableValues', 'slope', 'intercept', 'amplitude',
+  'exponent', 'surfaceScale', 'specularConstant', 'specularExponent',
+  'diffuseConstant', 'kernelMatrix', 'order', 'divisor', 'bias', 'targetX',
+  'targetY', 'edgeMode', 'preserveAlpha', 'kernelUnitLength', 'azimuth',
+  'elevation', 'pointsAtX', 'pointsAtY', 'pointsAtZ', 'limitingConeAngle', 'z',
   // Marca um elemento como espaço parametrizável de um modelo de cena.
   // Conteúdo: JSON { type, name }. Tratado como texto comum (não-URL) pelo
   // sanitizer, então sobrevive ao round-trip de import/export.
   'data-slot',
 ]);
 
-const URL_ATTRIBUTES = new Set(['fill', 'stroke', 'clip-path', 'mask', 'filter']);
+const URL_ATTRIBUTES = new Set([
+  'fill', 'stroke', 'clip-path', 'mask', 'filter',
+  'marker-start', 'marker-mid', 'marker-end', 'marker',
+]);
 const ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.:-]*$/;
+const INTERNAL_REF = /^#[A-Za-z_][\w.:-]*$/;
+
+// href/xlink:href: só referência interna (#id) ou imagem RASTER embutida.
+// Bloqueia javascript:, data:text/html, URLs externas (privacidade/SSRF) e
+// data:image/svg+xml — este último seria o vetor "SVG-em-data-URI" em <use>/feImage.
+const sanitizeHref = (value: string): string | null => {
+  const v = value.trim();
+  if (INTERNAL_REF.test(v)) return v;
+  if (/^data:image\/(png|jpe?g|gif|webp|bmp);/i.test(v)) return v;
+  return null;
+};
+
+// style inline: mantém propriedades de apresentação (fill, filter, blend, etc.),
+// mas rejeita o atributo inteiro se houver token perigoso ou url() não-interna.
+const STYLE_BLOCKLIST = /expression\(|javascript:|behaviou?r\s*:|-moz-binding|@import|<\/|url\(\s*['"]?\s*(?!#)/i;
+const sanitizeStyle = (value: string): string | null => {
+  if (STYLE_BLOCKLIST.test(value)) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+};
 
 let idCounter = 0;
 
@@ -137,16 +187,25 @@ const copySafeElement = (
   const target = targetDocument.createElementNS(SVG_NS, source.localName);
   for (const attribute of Array.from(source.attributes)) {
     const name = attribute.name;
-    if (
-      name.toLowerCase().startsWith('on') ||
-      name === 'style' ||
-      name === 'href' ||
-      name === 'xlink:href' ||
-      !ALLOWED_ATTRIBUTES.has(name) ||
-      !isSafeAttributeValue(name, attribute.value)
-    ) {
+
+    // Handlers de evento (onload, onclick, …) são sempre removidos.
+    if (name.toLowerCase().startsWith('on')) continue;
+
+    // style: mantém apresentação segura; descarta se tiver token perigoso.
+    if (name === 'style') {
+      const safe = sanitizeStyle(attribute.value);
+      if (safe) target.setAttribute('style', safe);
       continue;
     }
+
+    // href / xlink:href: só #id interno ou data:image/* (normaliza para `href`).
+    if (name === 'href' || name === 'xlink:href') {
+      const safe = sanitizeHref(attribute.value);
+      if (safe) target.setAttribute('href', safe);
+      continue;
+    }
+
+    if (!ALLOWED_ATTRIBUTES.has(name) || !isSafeAttributeValue(name, attribute.value)) continue;
 
     if (name === 'id') {
       if (!ID_PATTERN.test(attribute.value) || usedIds.has(attribute.value)) continue;
@@ -165,7 +224,7 @@ const copySafeElement = (
     if (child.nodeType === Node.ELEMENT_NODE) {
       const copied = copySafeElement(child as Element, targetDocument, usedIds);
       if (copied) target.appendChild(copied);
-    } else if (child.nodeType === Node.TEXT_NODE && ['text', 'tspan'].includes(source.localName)) {
+    } else if (child.nodeType === Node.TEXT_NODE && ['text', 'tspan', 'textPath'].includes(source.localName)) {
       target.appendChild(targetDocument.createTextNode(child.textContent ?? ''));
     }
   }
@@ -193,13 +252,42 @@ export const sanitizeSvg = (markup: string): string => {
   return new XMLSerializer().serializeToString(sanitized);
 };
 
-export const createBlankSvg = (): string =>
+// Proporções de quadro do modelo. Default 16:9 (alinhado ao vídeo do storyboard).
+export const SVG_ASPECT_PRESETS: { label: string; width: number; height: number }[] = [
+  { label: '16:9', width: 1280, height: 720 },
+  { label: '9:16', width: 720, height: 1280 },
+  { label: '1:1', width: 1080, height: 1080 },
+  { label: '4:5', width: 1080, height: 1350 },
+  { label: '4:3', width: 1200, height: 900 },
+];
+
+export const createBlankSvg = (width = 1280, height = 720): string =>
   sanitizeSvg(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600"></svg>',
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"></svg>`,
   );
 
 const serialize = (document: XMLDocument): string =>
   new XMLSerializer().serializeToString(document.documentElement);
+
+/** Redefine o quadro (viewBox) do modelo para a proporção desejada (16:9, 9:16…). */
+export const setViewBox = (markup: string, width: number, height: number): string => {
+  const document = parseSvg(markup);
+  const root = document.documentElement;
+  root.setAttribute('viewBox', `0 0 ${Math.round(width)} ${Math.round(height)}`);
+  root.setAttribute('width', '100%');
+  root.setAttribute('height', '100%');
+  return serialize(document);
+};
+
+/** Rótulo da proporção mais próxima do viewBox atual, ou 'Personalizado'. */
+export const aspectLabelFor = (width: number, height: number): string => {
+  if (!width || !height) return 'Personalizado';
+  const ratio = width / height;
+  const match = SVG_ASPECT_PRESETS.find(
+    (preset) => Math.abs(preset.width / preset.height - ratio) < 0.02,
+  );
+  return match ? match.label : 'Personalizado';
+};
 
 export const getSvgElementProperties = (
   markup: string,

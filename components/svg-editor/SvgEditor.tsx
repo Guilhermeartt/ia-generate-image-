@@ -15,10 +15,12 @@ import {
   listSlots,
   listSvgLayers,
   markSlot,
+  parseViewBox,
   removeSvgElement,
   reorderSvgElement,
   resizeSvgElement,
   sanitizeSvg,
+  setViewBox,
   unmarkSlot,
   updateSvgElement,
   updateSvgText,
@@ -49,6 +51,7 @@ const SvgEditor: React.FC = () => {
   );
   const layers = useMemo(() => listSvgLayers(documentState.markup), [documentState.markup]);
   const slots = useMemo(() => listSlots(documentState.markup), [documentState.markup]);
+  const viewBox = useMemo(() => parseViewBox(documentState.markup), [documentState.markup]);
   const previewContents = useMemo(() => buildPreviewContents(slots), [slots]);
   const selectedSlot = useMemo(
     () => (selectedId ? getSlotMeta(documentState.markup, selectedId) : null),
@@ -91,6 +94,13 @@ const SvgEditor: React.FC = () => {
     if (!selectedId) return;
     applyChange(unmarkSlot(documentState.markup, selectedId), 'Remover slot', selectedId);
   }, [applyChange, documentState.markup, selectedId]);
+
+  const changeAspect = useCallback(
+    (width: number, height: number) => {
+      applyChange(setViewBox(documentState.markup, width, height), 'Proporção do quadro');
+    },
+    [applyChange, documentState.markup],
+  );
 
   const renameSelectedSlot = useCallback(
     (name: string) => {
@@ -264,6 +274,8 @@ const SvgEditor: React.FC = () => {
           layers={layers}
           selectedId={selectedId}
           documentName={documentState.name}
+          viewBox={viewBox}
+          onAspectChange={changeAspect}
           slot={selectedSlot}
           slots={slots}
           previewMode={previewMode}

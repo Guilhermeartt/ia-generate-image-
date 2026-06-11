@@ -14,6 +14,7 @@ import {
   reorderSvgElement,
   resizeSvgElement,
   sanitizeSvg,
+  setViewBox,
   translateSvgElement,
   unmarkSlot,
   updateSvgElement,
@@ -157,8 +158,16 @@ describe('slots do modelo', () => {
   });
 
   it('lê as dimensões do viewBox', () => {
-    expect(parseViewBox(createBlankSvg())).toEqual({ width: 800, height: 600 });
+    expect(parseViewBox(createBlankSvg())).toEqual({ width: 1280, height: 720 });
+    expect(parseViewBox(createBlankSvg(720, 1280))).toEqual({ width: 720, height: 1280 });
     expect(parseViewBox('<svg></svg>')).toBeNull();
+  });
+
+  it('redefine o quadro com setViewBox preservando o conteúdo', () => {
+    const base = appendSvgElement(createBlankSvg(), 'rect', { x: 0, y: 0, width: 10, height: 10 });
+    const reframed = setViewBox(base.markup, 720, 1280);
+    expect(parseViewBox(reframed)).toEqual({ width: 720, height: 1280 });
+    expect(reframed).toContain('<rect');
   });
 
   it('persiste a animação do slot e sobrevive à sanitização', () => {
@@ -182,5 +191,76 @@ describe('slots do modelo', () => {
       exit: 'fade',
       endSeconds: 4,
     });
+  });
+});
+
+describe('sanitizeSvg — import fiel e seguro', () => {
+  it('preserva gradientes, filtros, blend mode, style seguro, use e imagem embutida', () => {
+    const result = sanitizeSvg(`
+      <svg viewBox="0 0 100 100">
+        <defs>
+          <linearGradient id="g"><stop offset="0" stop-color="#f00"/><stop offset="1" stop-color="#00f"/></linearGradient>
+          <filter id="blur"><feGaussianBlur stdDeviation="3"/><feDropShadow dx="2" dy="2"/></filter>
+          <symbol id="star"><path d="M0 0 L5 5"/></symbol>
+        </defs>
+        <rect width="50" height="50" fill="url(#g)" filter="url(#blur)" style="mix-blend-mode:multiply;paint-order:stroke"/>
+        <use href="#star" x="10" y="10"/>
+        <image href="data:image/png;base64,iVBORw0KGgo=" width="20" height="20"/>
+        <text letter-spacing="2" paint-order="stroke">Olá</text>
+      </svg>
+    `);
+
+    expect(result).toContain('linearGradient');
+    expect(result).toContain('feGaussianBlur');
+    expect(result).toContain('feDropShadow');
+    expect(result).toContain('fill="url(#g)"');
+    expect(result).toContain('mix-blend-mode:multiply');
+    expect(result).toContain('letter-spacing="2"');
+    expect(result).toContain('<use');
+    expect(result).toContain('href="#star"');
+    expect(result).toContain('data:image/png;base64');
+  });
+
+  it('remove style perigoso, href externo e data:image/svg+xml, mantendo o resto', () => {
+    const result = sanitizeSvg(`
+      <svg viewBox="0 0 100 100">
+        <rect width="10" height="10" style="fill:#0f0;background:url(https://evil.test/x.png)"/>
+        <image href="https://evil.test/x.png" width="10" height="10"/>
+        <use href="javascript:alert(1)"/>
+        <use href="data:image/svg+xml,&lt;svg onload=alert(1)&gt;"/>
+      </svg>
+    `);
+
+    expect(result).toContain('<rect');
+    expect(result).not.toContain('evil.test');
+    expect(result).not.toContain('javascript:');
+    // data:image/svg+xml (vetor SVG-em-data-URI) é descartado; raster seria mantido.
+    expect(result).not.toContain('svg+xml');
+    expect(result).not.toContain('onload');
+    // O style inteiro é descartado por conter url() externa.
+    expect(result).not.toContain('style=');
+  });
+
+  it('mantém data:image raster (png) em href', () => {
+    const result = sanitizeSvg(
+      '<svg viewBox="0 0 10 10"><image href="data:image/png;base64,iVBORw0KGgo=" width="10" height="10"/></svg>',
+    );
+    expect(result).toContain('data:image/png;base64');
+  });
+
+  it('continua removendo script, handlers e foreignObject', () => {
+    const result = sanitizeSvg(`
+      <svg viewBox="0 0 10 10" onload="alert(1)">
+        <script>alert(1)</script>
+        <foreignObject><div>x</div></foreignObject>
+        <rect width="5" height="5" onclick="alert(2)" style="behavior:url(#x)"/>
+      </svg>
+    `);
+    expect(result).toContain('<rect');
+    expect(result).not.toContain('script');
+    expect(result).not.toContain('foreignObject');
+    expect(result).not.toContain('onload');
+    expect(result).not.toContain('onclick');
+    expect(result).not.toContain('behavior');
   });
 });

@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import SlotAnimationEditor from './SlotAnimationEditor';
+import { SVG_ASPECT_PRESETS, aspectLabelFor } from './svgDocument';
 import type { SlotAnimation } from './slotAnimation';
 import type {
   SlotType,
@@ -14,6 +15,9 @@ interface SvgPropertiesPanelProps {
   layers: SvgLayer[];
   selectedId: string | null;
   documentName: string;
+  /** Dimensões do quadro (viewBox) do modelo. */
+  viewBox: { width: number; height: number } | null;
+  onAspectChange: (width: number, height: number) => void;
   /** Conteúdo extra renderizado no topo do painel (ex.: biblioteca de modelos). */
   libraryNode?: React.ReactNode;
   /** Slot do elemento selecionado, ou null se ele não for um slot. */
@@ -76,6 +80,8 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
   layers,
   selectedId,
   documentName,
+  viewBox,
+  onAspectChange,
   libraryNode,
   slot,
   slots,
@@ -116,6 +122,28 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
           onChange={(event) => onDocumentNameChange(event.target.value)}
           aria-label="Nome do documento"
         />
+        <label className="svg-editor-inline-field">
+          <span>Proporção</span>
+          <select
+            value={viewBox ? aspectLabelFor(viewBox.width, viewBox.height) : '16:9'}
+            onChange={(event) => {
+              const preset = SVG_ASPECT_PRESETS.find((item) => item.label === event.target.value);
+              if (preset) onAspectChange(preset.width, preset.height);
+            }}
+            aria-label="Proporção do quadro"
+          >
+            {SVG_ASPECT_PRESETS.map((preset) => (
+              <option key={preset.label} value={preset.label}>
+                {preset.label}
+              </option>
+            ))}
+            {viewBox && aspectLabelFor(viewBox.width, viewBox.height) === 'Personalizado' && (
+              <option value="Personalizado">
+                Personalizado ({Math.round(viewBox.width)}×{Math.round(viewBox.height)})
+              </option>
+            )}
+          </select>
+        </label>
       </Panel>
 
       <Panel title="Preenchimento">
