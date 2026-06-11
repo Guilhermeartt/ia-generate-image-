@@ -29,6 +29,9 @@ export interface SvgElementProperties {
   textAnchor: string;
   textLength: number | null;
   lengthAdjust: string;
+  structuredText: boolean;
+  transform: string;
+  rotation: number;
   x: number | null;
   y: number | null;
   width: number | null;
@@ -39,6 +42,16 @@ export interface SvgLayer {
   id: string;
   tagName: string;
   label: string;
+  depth: number;
+  parentId: string | null;
+  visible: boolean;
+  locked: boolean;
+}
+
+export interface SvgCamera {
+  x: number;
+  y: number;
+  zoom: number;
 }
 
 /** Papel funcional de um espaço parametrizável dentro de um modelo de cena. */

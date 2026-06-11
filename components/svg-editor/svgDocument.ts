@@ -126,6 +126,7 @@ const ALLOWED_ATTRIBUTES = new Set([
   // Conteúdo: JSON { type, name }. Tratado como texto comum (não-URL) pelo
   // sanitizer, então sobrevive ao round-trip de import/export.
   'data-slot',
+  'data-editor-locked',
 ]);
 
 const URL_ATTRIBUTES = new Set([
@@ -352,6 +353,13 @@ const isSafeAttributeValue = (name: string, value: string): boolean => {
   return true;
 };
 
+const isSafeMutation = (name: string, value: string): boolean => {
+  if (!ALLOWED_ATTRIBUTES.has(name) || !isSafeAttributeValue(name, value)) return false;
+  if (name === 'data-editor-locked') return value === 'true';
+  if (name === 'data-slot') return parseSlotMeta(value) !== null;
+  return true;
+};
+
 const copySafeElement = (
   source: Element,
   targetDocument: XMLDocument,
@@ -449,7 +457,9 @@ const serialize = (document: XMLDocument): string =>
 export const setViewBox = (markup: string, width: number, height: number): string => {
   const document = parseSvg(markup);
   const root = document.documentElement;
-  root.setAttribute('viewBox', `0 0 ${Math.round(width)} ${Math.round(height)}`);
+  const safeWidth = Number.isFinite(width) ? Math.max(1, Math.round(width)) : 1280;
+  const safeHeight = Number.isFinite(height) ? Math.max(1, Math.round(height)) : 720;
+  root.setAttribute('viewBox', `0 0 ${safeWidth} ${safeHeight}`);
   root.setAttribute('width', '100%');
   root.setAttribute('height', '100%');
   return serialize(document);
@@ -478,6 +488,8 @@ export const getSvgElementProperties = (
   const stroke = effectivePresentationValue(element, 'stroke', 'none');
   const resolvedStroke =
     stroke === 'currentColor' ? effectivePresentationValue(element, 'color', '#000000') : stroke;
+  const transform = element.getAttribute('transform') || '';
+  const rotateMatch = transform.match(/rotate\(\s*(-?\d+(?:\.\d+)?)/i);
   return {
     id,
     tagName: element.localName,
@@ -496,6 +508,13 @@ export const getSvgElementProperties = (
       ? Number.parseFloat(element.getAttribute('textLength') || '0')
       : null,
     lengthAdjust: element.getAttribute('lengthAdjust') || 'spacing',
+    structuredText:
+      element.localName === 'text' &&
+      Array.from(element.children).some((child) =>
+        ['tspan', 'textPath'].includes(child.localName),
+      ),
+    transform,
+    rotation: rotateMatch ? Number.parseFloat(rotateMatch[1]) || 0 : 0,
     ...bounds,
   };
 };
@@ -573,7 +592,10 @@ export const updateSvgElement = (
   for (const [name, value] of Object.entries(attributes)) {
     if (!ALLOWED_ATTRIBUTES.has(name)) continue;
     if (value === null) element.removeAttribute(name);
-    else element.setAttribute(name, String(value));
+    else {
+      const serialized = String(value);
+      if (isSafeMutation(name, serialized)) element.setAttribute(name, serialized);
+    }
   }
   return serialize(document);
 };
@@ -600,33 +622,55 @@ export const updateSvgText = (markup: string, id: string, text: string): string 
   const document = parseSvg(markup);
   const element = document.getElementById(id);
   if (!element || element.localName !== 'text') return markup;
+  if (Array.from(element.children).some((child) => ['tspan', 'textPath'].includes(child.localName))) {
+    return markup;
+  }
   element.textContent = text;
   return serialize(document);
 };
 
 export const listSvgLayers = (markup: string): SvgLayer[] => {
   const document = parseSvg(markup);
-  return Array.from(document.documentElement.children)
-    .filter((element) => EDITABLE_ELEMENTS.has(element.localName) && element.id)
-    .reverse()
-    .map((element) => ({
-      id: element.id,
-      tagName: element.localName,
-      label:
-        element.localName === 'text'
-          ? element.textContent?.trim() || 'Texto'
-          : {
-              rect: 'Retângulo',
-              ellipse: 'Elipse',
-              circle: 'Círculo',
-              line: 'Linha',
-              path: 'Path',
-              g: 'Grupo',
-              polygon: 'Polígono',
-              polyline: 'Polilinha',
-            }[element.localName] || element.localName,
-    }));
+  const layers: SvgLayer[] = [];
+  const visit = (parent: Element, depth: number, parentId: string | null) => {
+    const children = Array.from(parent.children).filter(
+      (element) => EDITABLE_ELEMENTS.has(element.localName) && element.id,
+    );
+    for (const element of children.reverse()) {
+      layers.push({
+        id: element.id,
+        tagName: element.localName,
+        label:
+          element.localName === 'text'
+            ? element.textContent?.trim() || 'Texto'
+            : {
+                rect: 'Retângulo',
+                ellipse: 'Elipse',
+                circle: 'Círculo',
+                line: 'Linha',
+                path: 'Path',
+                g: 'Grupo',
+                image: 'Imagem',
+                polygon: 'Polígono',
+                polyline: 'Polilinha',
+              }[element.localName] || element.localName,
+        depth,
+        parentId,
+        visible: element.getAttribute('display') !== 'none',
+        locked: element.getAttribute('data-editor-locked') === 'true',
+      });
+      visit(element, depth + 1, element.id);
+    }
+  };
+  visit(document.documentElement, 0, null);
+  return layers;
 };
+
+export const setSvgElementVisibility = (markup: string, id: string, visible: boolean): string =>
+  updateSvgElement(markup, id, { display: visible ? null : 'none' });
+
+export const setSvgElementLocked = (markup: string, id: string, locked: boolean): string =>
+  updateSvgElement(markup, id, { 'data-editor-locked': locked ? 'true' : null });
 
 export const reorderSvgElement = (
   markup: string,
@@ -686,11 +730,35 @@ export const removeSvgElement = (markup: string, id: string): string => {
   return serialize(document);
 };
 
-const assignFreshIds = (element: Element): void => {
-  if (EDITABLE_ELEMENTS.has(element.localName)) {
+const assignFreshIds = (element: Element, replacements: Map<string, string>): void => {
+  if (element.id) {
+    const previous = element.id;
+    const next = createSvgId(element.localName);
+    replacements.set(previous, next);
+    element.setAttribute('id', next);
+  } else if (EDITABLE_ELEMENTS.has(element.localName)) {
     element.setAttribute('id', createSvgId(element.localName));
   }
-  for (const child of Array.from(element.children)) assignFreshIds(child);
+  for (const child of Array.from(element.children)) assignFreshIds(child, replacements);
+};
+
+const rewriteInternalReferences = (element: Element, replacements: Map<string, string>): void => {
+  for (const attribute of Array.from(element.attributes)) {
+    let value = attribute.value.replace(
+      /url\(\s*#([A-Za-z_][\w.:-]*)\s*\)/g,
+      (reference, id: string) => {
+        const replacement = replacements.get(id);
+        return replacement ? `url(#${replacement})` : reference;
+      },
+    );
+    const directReference = value.match(/^#([A-Za-z_][\w.:-]*)$/);
+    if (directReference) {
+      const replacement = replacements.get(directReference[1]);
+      if (replacement) value = `#${replacement}`;
+    }
+    if (value !== attribute.value) element.setAttribute(attribute.name, value);
+  }
+  for (const child of Array.from(element.children)) rewriteInternalReferences(child, replacements);
 };
 
 export const duplicateSvgElement = (
@@ -701,7 +769,9 @@ export const duplicateSvgElement = (
   const source = document.getElementById(id);
   if (!source || !source.parentElement) return { markup, id: null };
   const clone = source.cloneNode(true) as Element;
-  assignFreshIds(clone);
+  const replacements = new Map<string, string>();
+  assignFreshIds(clone, replacements);
+  rewriteInternalReferences(clone, replacements);
   const transform = clone.getAttribute('transform') || '';
   clone.setAttribute('transform', `translate(16 16) ${transform}`.trim());
   source.parentElement.appendChild(clone);
@@ -716,6 +786,12 @@ export const translateSvgElement = (markup: string, id: string, dx: number, dy: 
   element.setAttribute('transform', `translate(${dx} ${dy}) ${transform}`.trim());
   return serialize(document);
 };
+
+export const transformSvgElement = (
+  markup: string,
+  id: string,
+  transform: string,
+): string => updateSvgElement(markup, id, { transform });
 
 // ── Slots de modelo de cena ──────────────────────────────────────────────────
 // Um slot é um elemento comum do SVG marcado com `data-slot`. A geometria do

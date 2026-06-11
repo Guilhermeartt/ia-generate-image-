@@ -1,3 +1,5 @@
+import { sanitizeSvg } from './svgDocument';
+
 // ── Renderizador de modelo (composição por substituição in-place) ────────────
 // Pega o markup de um modelo (SVG sanitizado + slots marcados com data-slot) e
 // substitui cada slot pelo seu conteúdo NO MESMO lugar do documento — o que
@@ -106,7 +108,12 @@ const buildImage = (doc: XMLDocument, slot: Element, content: SlotImageContent):
   image.setAttribute('y', String(bounds.y));
   image.setAttribute('width', String(Math.max(0, bounds.width)));
   image.setAttribute('height', String(Math.max(0, bounds.height)));
-  image.setAttribute('href', content.href);
+  const safeHref = /^(data:image\/(?:png|jpe?g|gif|webp|bmp)[;,]|blob:|https?:)/i.test(
+    content.href.trim(),
+  )
+    ? content.href
+    : '';
+  image.setAttribute('href', safeHref);
   image.setAttribute(
     'preserveAspectRatio',
     content.fit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice',
@@ -168,7 +175,7 @@ const buildText = (doc: XMLDocument, slot: Element, content: SlotTextContent): E
 const buildIcon = (doc: XMLDocument, slot: Element, content: SlotIconContent): Element | null => {
   let iconDoc: XMLDocument;
   try {
-    iconDoc = parse(content.svg);
+    iconDoc = parse(sanitizeSvg(content.svg));
   } catch {
     return null;
   }

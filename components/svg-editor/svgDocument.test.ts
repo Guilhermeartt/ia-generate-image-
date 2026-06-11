@@ -14,6 +14,8 @@ import {
   reorderSvgElement,
   resizeSvgElement,
   sanitizeSvg,
+  setSvgElementLocked,
+  setSvgElementVisibility,
   setViewBox,
   translateSvgElement,
   unmarkSlot,
@@ -107,6 +109,56 @@ describe('svgDocument', () => {
 
     const sentBack = reorderSvgElement(second.markup, second.id, 'back');
     expect(listSvgLayers(sentBack).map((layer) => layer.id)).toEqual([first.id, second.id]);
+  });
+
+  it('preserva texto estruturado em vez de apagar tspans durante edição simples', () => {
+    const markup = sanitizeSvg(`
+      <svg viewBox="0 0 100 100">
+        <text id="title"><tspan x="10" y="20">Linha 1</tspan><tspan x="10" y="40">Linha 2</tspan></text>
+      </svg>
+    `);
+    expect(getSvgElementProperties(markup, 'title')?.structuredText).toBe(true);
+    expect(updateSvgText(markup, 'title', 'Substituição')).toBe(markup);
+  });
+
+  it('bloqueia mutações com URL externa e mantém controles editoriais seguros', () => {
+    const { markup, id } = appendSvgElement(createBlankSvg(), 'rect', {
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      fill: '#fff',
+    });
+    const unsafe = updateSvgElement(markup, id, { fill: 'url(https://evil.test/x)' });
+    expect(getSvgElementProperties(unsafe, id)?.fill).toBe('#fff');
+
+    const hidden = setSvgElementVisibility(markup, id, false);
+    const locked = setSvgElementLocked(hidden, id, true);
+    expect(listSvgLayers(locked)[0]).toMatchObject({ visible: false, locked: true });
+  });
+
+  it('lista grupos recursivamente e remapeia referências internas ao duplicar', () => {
+    const markup = sanitizeSvg(`
+      <svg viewBox="0 0 100 100">
+        <g id="card">
+          <defs><clipPath id="clip"><rect width="10" height="10"/></clipPath></defs>
+          <rect id="content" width="20" height="20" clip-path="url(#clip)"/>
+        </g>
+      </svg>
+    `);
+    expect(listSvgLayers(markup).map(({ id, depth }) => ({ id, depth }))).toEqual([
+      { id: 'card', depth: 0 },
+      { id: 'content', depth: 1 },
+    ]);
+
+    const duplicate = duplicateSvgElement(markup, 'card');
+    const document = new DOMParser().parseFromString(duplicate.markup, 'image/svg+xml');
+    const groups = document.querySelectorAll('g');
+    const clonedClip = groups[1].querySelector('clipPath')?.id;
+    expect(clonedClip).toBeTruthy();
+    expect(groups[1].querySelector('rect[clip-path]')?.getAttribute('clip-path')).toBe(
+      `url(#${clonedClip})`,
+    );
   });
 });
 

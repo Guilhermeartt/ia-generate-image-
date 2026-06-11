@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SvgCanvas from './SvgCanvas';
 import SvgPropertiesPanel from './SvgPropertiesPanel';
 import SvgTemplateLibrary from './SvgTemplateLibrary';
@@ -6,7 +6,7 @@ import SvgToolbar from './SvgToolbar';
 import AnimatedTemplatePreview from './AnimatedTemplatePreview';
 import { buildPreviewContents } from './templateBinding';
 import type { SlotAnimation } from './slotAnimation';
-import type { SlotType, SvgEditorDocument, SvgTool } from './types';
+import type { SlotType, SvgCamera, SvgEditorDocument, SvgTool } from './types';
 import {
   createBlankSvg,
   duplicateSvgElement,
@@ -20,7 +20,10 @@ import {
   reorderSvgElement,
   resizeSvgElement,
   sanitizeSvg,
+  setSvgElementLocked,
+  setSvgElementVisibility,
   setViewBox,
+  translateSvgElement,
   unmarkSlot,
   updateSvgElement,
   updateSvgText,
@@ -31,10 +34,22 @@ interface HistoryState {
   future: string[];
 }
 
-const initialDocument = (): SvgEditorDocument => ({
-  name: 'ilustracao',
-  markup: createBlankSvg(),
-});
+const DRAFT_KEY = 'svg-editor-draft-v1';
+
+const initialDocument = (): SvgEditorDocument => {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (raw) {
+      const draft = JSON.parse(raw) as Partial<SvgEditorDocument>;
+      if (typeof draft.name === 'string' && typeof draft.markup === 'string') {
+        return { name: draft.name, markup: sanitizeSvg(draft.markup) };
+      }
+    }
+  } catch {
+    // Rascunho ausente ou inválido: abre um documento novo.
+  }
+  return { name: 'ilustracao', markup: createBlankSvg() };
+};
 
 const SvgEditor: React.FC = () => {
   const [documentState, setDocumentState] = useState<SvgEditorDocument>(initialDocument);
@@ -45,6 +60,9 @@ const SvgEditor: React.FC = () => {
   const [pointerPosition, setPointerPosition] = useState<{ x: number; y: number } | null>(null);
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
+  const [camera, setCamera] = useState<SvgCamera>({ x: 0, y: 0, zoom: 1 });
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const lastCommitRef = useRef<{ key: string; time: number } | null>(null);
   const properties = useMemo(
     () => (selectedId ? getSvgElementProperties(documentState.markup, selectedId) : null),
     [documentState.markup, selectedId],
@@ -59,16 +77,21 @@ const SvgEditor: React.FC = () => {
   );
 
   const commit = useCallback(
-    (before: string, after: string, _label: string, nextSelectedId?: string) => {
+    (before: string, after: string, label: string, nextSelectedId?: string) => {
       if (before === after) return;
+      const now = Date.now();
+      const key = `${label}:${nextSelectedId ?? selectedId ?? ''}`;
+      const coalesce =
+        lastCommitRef.current?.key === key && now - lastCommitRef.current.time < 700;
       setHistory((current) => ({
-        past: [...current.past, before].slice(-50),
+        past: coalesce ? current.past : [...current.past, before].slice(-100),
         future: [],
       }));
       setDocumentState((current) => ({ ...current, markup: after }));
       if (nextSelectedId !== undefined) setSelectedId(nextSelectedId);
+      lastCommitRef.current = { key, time: now };
     },
-    [],
+    [selectedId],
   );
 
   const applyChange = useCallback(
@@ -131,6 +154,7 @@ const SvgEditor: React.FC = () => {
   );
 
   const undo = useCallback(() => {
+    lastCommitRef.current = null;
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
       if (!previous) return current;
@@ -144,6 +168,7 @@ const SvgEditor: React.FC = () => {
   }, [documentState.markup]);
 
   const redo = useCallback(() => {
+    lastCommitRef.current = null;
     setHistory((current) => {
       const next = current.future[0];
       if (!next) return current;
@@ -210,7 +235,19 @@ const SvgEditor: React.FC = () => {
     commit(documentState.markup, markup, 'Novo documento');
     setDocumentState({ name: 'ilustracao', markup });
     setSelectedId(null);
+    setCamera({ x: 0, y: 0, zoom: 1 });
   }, [commit, documentState.markup]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(documentState));
+      } catch {
+        // Persistência local indisponível; o editor continua funcional.
+      }
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [documentState]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -223,6 +260,28 @@ const SvgEditor: React.FC = () => {
         else undo();
         return;
       }
+      if (command && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        duplicateSelected();
+        return;
+      }
+      if (command && event.key === '0') {
+        event.preventDefault();
+        setCamera({ x: 0, y: 0, zoom: 1 });
+        return;
+      }
+      if (selectedId && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault();
+        const amount = event.shiftKey ? 10 : 1;
+        const dx = event.key === 'ArrowLeft' ? -amount : event.key === 'ArrowRight' ? amount : 0;
+        const dy = event.key === 'ArrowUp' ? -amount : event.key === 'ArrowDown' ? amount : 0;
+        applyChange(
+          translateSvgElement(documentState.markup, selectedId, dx, dy),
+          'Mover elemento pelo teclado',
+          selectedId,
+        );
+        return;
+      }
       if (event.key === 'Delete' || event.key === 'Backspace') removeSelected();
       if (event.key.toLowerCase() === 'v') setTool('select');
       if (event.key.toLowerCase() === 'r') setTool('rect');
@@ -231,11 +290,22 @@ const SvgEditor: React.FC = () => {
       if (event.key.toLowerCase() === 'p') setTool('freehand');
       if (event.key.toLowerCase() === 't') setTool('text');
       if (event.key.toLowerCase() === 's') setTool('star');
-      if (event.key === 'Escape') setTool('select');
+      if (event.key === 'Escape') {
+        setTool('select');
+        setSelectedId(null);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [redo, removeSelected, undo]);
+  }, [
+    applyChange,
+    documentState.markup,
+    duplicateSelected,
+    redo,
+    removeSelected,
+    selectedId,
+    undo,
+  ]);
 
   return (
     <section
@@ -262,6 +332,14 @@ const SvgEditor: React.FC = () => {
         onBack={() => reorderSelected('back')}
         onExport={exportSvg}
         onNew={resetDocument}
+        zoom={camera.zoom}
+        onZoomIn={() => setCamera((value) => ({ ...value, zoom: Math.min(8, value.zoom * 1.2) }))}
+        onZoomOut={() =>
+          setCamera((value) => ({ ...value, zoom: Math.max(0.1, value.zoom / 1.2) }))
+        }
+        onFit={() => setCamera({ x: 0, y: 0, zoom: 1 })}
+        snapToGrid={snapToGrid}
+        onToggleSnap={() => setSnapToGrid((value) => !value)}
       />
       {message && (
         <button className="svg-editor-message" type="button" onClick={() => setMessage(null)}>
@@ -307,6 +385,21 @@ const SvgEditor: React.FC = () => {
           onDeleteLayer={(id) => {
             applyChange(removeSvgElement(documentState.markup, id), 'Excluir elemento');
             if (selectedId === id) setSelectedId(null);
+          }}
+          onToggleLayerVisibility={(id, visible) => {
+            applyChange(
+              setSvgElementVisibility(documentState.markup, id, visible),
+              'Alterar visibilidade',
+              selectedId ?? undefined,
+            );
+          }}
+          onToggleLayerLocked={(id, locked) => {
+            applyChange(
+              setSvgElementLocked(documentState.markup, id, locked),
+              'Alterar bloqueio',
+              selectedId ?? undefined,
+            );
+            if (locked && selectedId === id) setSelectedId(null);
           }}
           onUpload={(file) => void importFile(file)}
           onChange={(attributes, label) => {
@@ -358,12 +451,12 @@ const SvgEditor: React.FC = () => {
             markup={documentState.markup}
             tool={tool}
             selectedId={selectedId}
+            viewBox={viewBox}
+            camera={camera}
+            onCameraChange={setCamera}
+            snapToGrid={snapToGrid}
             onSelect={setSelectedId}
             onPointerPosition={setPointerPosition}
-            onPreview={(markup, id) => {
-              setDocumentState((current) => ({ ...current, markup }));
-              if (id) setSelectedId(id);
-            }}
             onCommit={commit}
           />
         )}

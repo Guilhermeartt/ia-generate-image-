@@ -16,6 +16,12 @@ interface SvgToolbarProps {
   onBack: () => void;
   onExport: () => void;
   onNew: () => void;
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFit: () => void;
+  snapToGrid: boolean;
+  onToggleSnap: () => void;
 }
 
 const GROUPS: Array<Array<{ id: SvgTool; label: string; icon: string }>> = [
@@ -71,6 +77,12 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
   onBack,
   onExport,
   onNew,
+  zoom,
+  onZoomIn,
+  onZoomOut,
+  onFit,
+  snapToGrid,
+  onToggleSnap,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
@@ -112,6 +124,27 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
         disabled={!hasSelection}
         onClick={onBack}
       />
+
+      <span className="svg-editor-toolbar-separator" />
+      <ActionButton title="Diminuir zoom" icon="−" onClick={onZoomOut} />
+      <button
+        className="svg-editor-zoom-button"
+        type="button"
+        title="Ajustar modelo à tela"
+        onClick={onFit}
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <ActionButton title="Aumentar zoom" icon="+" onClick={onZoomIn} />
+      <button
+        className={`svg-editor-snap-button${snapToGrid ? ' active' : ''}`}
+        type="button"
+        aria-pressed={snapToGrid}
+        title="Alinhar movimentos à grade de 10 unidades"
+        onClick={onToggleSnap}
+      >
+        Grade 10
+      </button>
 
       <div className="svg-editor-toolbar-spacer" />
       <button className="btn btn-ghost" type="button" onClick={onNew}>

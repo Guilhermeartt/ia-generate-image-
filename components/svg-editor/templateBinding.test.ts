@@ -58,7 +58,7 @@ describe('buildPreviewContents', () => {
     const slots = [slot('a', 'image', 'capa'), slot('t', 'text', 'Título'), slot('i', 'icon', 'selo')];
     const contents = buildPreviewContents(slots);
     expect(contents[0]).toMatchObject({ id: 'a', type: 'image' });
-    expect((contents[0] as { href: string }).href).toContain('data:image/svg+xml');
+    expect((contents[0] as { href: string }).href).toContain('data:image/png;base64');
     expect(contents[1]).toEqual({ id: 't', type: 'text', value: 'Título' });
     expect(contents[2]).toMatchObject({ id: 'i', type: 'icon' });
   });

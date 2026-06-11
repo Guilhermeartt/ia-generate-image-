@@ -12,11 +12,13 @@ describe('renderTemplate', () => {
     const fg = appendSvgElement(slot.markup, 'rect', { x: 0, y: 560, width: 800, height: 40 });
     const marked = markSlot(fg.markup, slot.id, { type: 'image', name: 'Capa' });
 
-    const out = renderTemplate(marked, [{ id: slot.id, type: 'image', href: 'data:img' }]);
+    const out = renderTemplate(marked, [
+      { id: slot.id, type: 'image', href: 'data:image/png;base64,aA==' },
+    ]);
     const doc = parse(out);
 
     const image = doc.querySelector('image');
-    expect(image?.getAttribute('href')).toBe('data:img');
+    expect(image?.getAttribute('href')).toBe('data:image/png;base64,aA==');
     expect(image?.getAttribute('clip-path')).toMatch(/^url\(#slot-clip-/);
     expect(image?.getAttribute('preserveAspectRatio')).toBe('xMidYMid slice');
     expect(doc.querySelector('defs clipPath')).not.toBeNull();
@@ -66,6 +68,22 @@ describe('renderTemplate', () => {
     expect(nested?.getAttribute('viewBox')).toBe('0 0 24 24');
     expect(nested?.getAttribute('width')).toBe('48');
     expect(nested?.querySelector('path')).not.toBeNull();
+  });
+
+  it('remove conteúdo ativo de ícones e bloqueia href de imagem perigoso', () => {
+    const r = appendSvgElement(createBlankSvg(), 'rect', { x: 0, y: 0, width: 48, height: 48 });
+    const iconSlot = markSlot(r.markup, r.id, { type: 'icon', name: 'selo' });
+    const icon =
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><path d="M0 0h10v10z" onclick="alert(2)"/></svg>';
+    const iconOut = renderTemplate(iconSlot, [{ id: r.id, type: 'icon', svg: icon }]);
+    expect(iconOut).not.toContain('script');
+    expect(iconOut).not.toContain('onclick');
+
+    const imageSlot = markSlot(r.markup, r.id, { type: 'image', name: 'capa' });
+    const imageOut = renderTemplate(imageSlot, [
+      { id: r.id, type: 'image', href: 'javascript:alert(1)' },
+    ]);
+    expect(parse(imageOut).querySelector('image')?.getAttribute('href')).toBe('');
   });
 
   it('ignora ids de slot inexistentes sem lançar erro', () => {

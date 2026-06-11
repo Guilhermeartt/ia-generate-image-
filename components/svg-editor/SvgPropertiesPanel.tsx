@@ -30,6 +30,8 @@ interface SvgPropertiesPanelProps {
   onDocumentNameChange: (name: string) => void;
   onSelect: (id: string) => void;
   onDeleteLayer: (id: string) => void;
+  onToggleLayerVisibility: (id: string, visible: boolean) => void;
+  onToggleLayerLocked: (id: string, locked: boolean) => void;
   onUpload: (file: File) => void;
   onChange: (attributes: Record<string, string | number | null>, label: string) => void;
   onTextChange: (text: string) => void;
@@ -65,8 +67,19 @@ const SWATCHES = [
   '#e6f1fb',
 ];
 
-const normalizeColor = (value: string, fallback: string): string =>
-  /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+const normalizeColor = (value: string, fallback: string): string => {
+  if (/^#[0-9a-f]{6}$/i.test(value)) return value;
+  const short = value.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+  if (short) return `#${short.slice(1).map((part) => part + part).join('')}`;
+  const rgb = value.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+  if (rgb) {
+    return `#${rgb
+      .slice(1, 4)
+      .map((part) => Math.min(255, Number(part)).toString(16).padStart(2, '0'))
+      .join('')}`;
+  }
+  return fallback;
+};
 
 const Panel = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section className="svg-editor-panel">
@@ -90,6 +103,8 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
   onDocumentNameChange,
   onSelect,
   onDeleteLayer,
+  onToggleLayerVisibility,
+  onToggleLayerLocked,
   onUpload,
   onChange,
   onTextChange,
@@ -144,6 +159,36 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
             )}
           </select>
         </label>
+        <div className="svg-editor-transform-grid svg-editor-document-size">
+          <label>
+            <span>L</span>
+            <input
+              type="number"
+              min="1"
+              value={viewBox ? Math.round(viewBox.width) : 1280}
+              aria-label="Largura do modelo"
+              onChange={(event) =>
+                onAspectChange(Number(event.target.value), viewBox?.height ?? 720)
+              }
+            />
+          </label>
+          <label>
+            <span>A</span>
+            <input
+              type="number"
+              min="1"
+              value={viewBox ? Math.round(viewBox.height) : 720}
+              aria-label="Altura do modelo"
+              onChange={(event) =>
+                onAspectChange(viewBox?.width ?? 1280, Number(event.target.value))
+              }
+            />
+          </label>
+        </div>
+        <p className="svg-editor-dimension-note">
+          A borda violeta delimita exatamente a área exportada. A linha interna marca a margem
+          segura de 5%.
+        </p>
       </Panel>
 
       <Panel title="Preenchimento">
@@ -267,8 +312,14 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
               <span>Texto</span>
               <textarea
                 value={properties.text}
+                disabled={properties.structuredText}
                 onChange={(event) => onTextChange(event.target.value)}
               />
+              {properties.structuredText && (
+                <small className="svg-editor-field-note">
+                  Texto estruturado com tspan/textPath: conteúdo protegido para preservar o layout.
+                </small>
+              )}
             </label>
             <label className="svg-editor-inline-field">
               <span>Tamanho da fonte</span>
@@ -425,32 +476,59 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
         <div className="svg-editor-layers">
           {layers.length === 0 && <span className="svg-editor-muted">Nenhum objeto</span>}
           {layers.map((layer) => (
-            <button
-              type="button"
+            <div
               key={layer.id}
-              className={selectedId === layer.id ? 'selected' : ''}
-              onClick={() => onSelect(layer.id)}
+              className={`svg-editor-layer-row${selectedId === layer.id ? ' selected' : ''}`}
+              style={{ paddingLeft: 9 + layer.depth * 14 }}
             >
-              <span className="svg-editor-layer-icon">
-                {layer.tagName === 'text' ? 'T' : layer.tagName === 'path' ? '⌁' : '◇'}
-              </span>
-              <span>{layer.label}</span>
-              <small>{layer.tagName}</small>
-              <i
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
+                className="svg-editor-layer-select"
+                onClick={() => onSelect(layer.id)}
+                aria-label={`Selecionar ${layer.label}`}
+              >
+                <span className="svg-editor-layer-icon">
+                  {layer.tagName === 'text' ? 'T' : layer.tagName === 'path' ? '⌁' : '◇'}
+                </span>
+                <span>{layer.label}</span>
+                <small>{layer.tagName}</small>
+              </button>
+              <button
+                type="button"
+                className="svg-editor-layer-action"
+                aria-label={layer.visible ? `Ocultar ${layer.label}` : `Mostrar ${layer.label}`}
+                title={layer.visible ? 'Ocultar' : 'Mostrar'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleLayerVisibility(layer.id, !layer.visible);
+                }}
+              >
+                {layer.visible ? '◉' : '○'}
+              </button>
+              <button
+                type="button"
+                className="svg-editor-layer-action"
+                aria-label={layer.locked ? `Desbloquear ${layer.label}` : `Bloquear ${layer.label}`}
+                title={layer.locked ? 'Desbloquear' : 'Bloquear'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleLayerLocked(layer.id, !layer.locked);
+                }}
+              >
+                {layer.locked ? '▣' : '□'}
+              </button>
+              <button
+                type="button"
+                className="svg-editor-layer-action"
                 aria-label={`Excluir ${layer.label}`}
                 onClick={(event) => {
                   event.stopPropagation();
                   onDeleteLayer(layer.id);
                 }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') onDeleteLayer(layer.id);
-                }}
               >
                 ×
-              </i>
-            </button>
+              </button>
+            </div>
           ))}
         </div>
       </Panel>

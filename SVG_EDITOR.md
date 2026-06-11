@@ -10,6 +10,25 @@
 **Marco 2 concluído:** evolução visual e funcional baseada no protótipo
 `/Users/guilherme.artt/Downloads/svg_editor_module.html`.
 
+**Marco 3 concluído:** fundação profissional de interação, segurança e
+persistência.
+
+Entregue neste marco:
+
+- prancheta com proporção exata, borda exportável e margem segura visível;
+- zoom, pan, ajuste à tela e snapping em grade;
+- resize genérico e rotação por alças;
+- atualização direta do nó durante gestos e uma serialização por ação;
+- histórico agrupado para alterações contínuas;
+- camadas hierárquicas com visibilidade e bloqueio;
+- autosave local versionado;
+- dimensões personalizadas do modelo;
+- mutações com a mesma validação de segurança da importação;
+- sanitização de ícones e URLs de imagem do renderizador de templates;
+- duplicação com remapeamento de IDs e referências internas;
+- proteção de textos estruturados com `tspan` e `textPath`;
+- atalhos de nudge, duplicação e ajuste da câmera.
+
 Escopo aceito para este marco:
 
 - toolbar compacta;
@@ -49,10 +68,9 @@ Portado neste marco:
 Não portado ainda:
 
 - ferramenta de nós Bézier;
-- agrupamento;
 - blur, brilho, contraste e sombra;
-- rotação;
-- resize genérico de paths e texto.
+- operações booleanas;
+- edição simultânea multiusuário.
 
 O editor será implementado em `components/svg-editor/` e terá uma view própria
 registrada em `config/views.tsx`.
@@ -117,8 +135,9 @@ components/svg-editor/
 └── svgDocument.test.ts       # testes puros do documento
 ```
 
-`SvgLayersPanel.tsx` ainda não existe. Ele deve ser criado no marco de camadas,
-sem colocar essa responsabilidade em `SvgPropertiesPanel.tsx`.
+O painel de camadas continua dentro de `SvgPropertiesPanel.tsx`. A árvore já é
+hierárquica; extraí-la para `SvgLayersPanel.tsx` passa a ser uma melhoria de
+organização, não um requisito funcional.
 
 ## Modelo de estado do MVP
 
@@ -131,9 +150,9 @@ interface SvgEditorDocument {
 type SvgTool = 'select' | 'rect' | 'ellipse' | 'line' | 'freehand' | 'text' | 'star' | 'triangle';
 ```
 
-O histórico armazena snapshots do `markup`. Para o MVP isso é simples,
-determinístico e suficiente. Se documentos grandes mostrarem pressão de
-memória, substituir por comandos/diffs sem alterar a API visual.
+O histórico armazena snapshots do `markup`, mas agrupa alterações contínuas por
+ação. Durante gestos, o DOM SVG ativo é atualizado diretamente e serializado
+somente no commit, evitando remontar o documento a cada movimento.
 
 ## Escopo do primeiro marco
 
@@ -214,15 +233,16 @@ O build gera `SvgEditor` como chunk lazy independente, atualmente com cerca de
 - Redimensionamento por alças funciona em retângulos, círculos e elipses.
 - Paths mostram seleção, mas ainda não têm resize geométrico.
 - O desenho de path é livre e formado por segmentos `M/L`; não há curvas.
-- Não há zoom, pan, régua, snapping, grid configurável ou seleção múltipla.
-- Alterações contínuas em color picker/range podem criar várias entradas de
-  histórico. O próximo refinamento deve agrupar por foco/gesto.
+- Não há régua, guias inteligentes, seleção múltipla ou marquee selection.
+- O snapping atual usa grade fixa de 10 unidades; ainda não há snapping entre
+  objetos, centros e bordas.
 - Gradientes e filtros importados são preservados quando usam atributos
   permitidos, mas ainda não têm interface própria.
 - IDs referenciados por gradientes/filtros devem receber testes adicionais
   antes de implementar renomeação global ou colagem entre documentos.
-- O documento SVG ainda vive somente no estado da view. Não é salvo no `.zip`,
-  autosave ou nuvem.
+- O documento possui autosave local, mas ainda não é salvo no `.zip` ou nuvem.
+- Edição individual de nós Bézier e operações booleanas continuam fora do
+  escopo atual.
 
 ## Regras para manutenção
 
@@ -237,6 +257,14 @@ O build gera `SvgEditor` como chunk lazy independente, atualmente com cerca de
 
 ### 2026-06-11
 
+- Concluído o Marco 3 com câmera, prancheta delimitada, margem segura, snapping,
+  resize genérico, rotação, camadas hierárquicas, lock/hide e autosave.
+- Gestos passaram a alterar somente o nó ativo e gerar uma serialização no
+  commit.
+- Histórico passou a agrupar alterações contínuas e aceitar até 100 snapshots.
+- Segurança centralizada também para mutações, ícones e imagens de templates.
+- Duplicação passou a remapear IDs e referências `url(#id)`/`href`.
+- Textos estruturados passaram a ser protegidos contra edição destrutiva.
 - A importação agora materializa regras CSS estáticas seguras de classes e IDs
   como atributos SVG, preservando cores, contornos e tipografia sem manter
   stylesheets capazes de afetar a interface.

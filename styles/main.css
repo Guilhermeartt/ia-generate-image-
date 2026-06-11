@@ -251,6 +251,33 @@
         box-shadow: 0 0 0 2px rgba(127,119,221,.18);
       }
       .svg-editor-icon-button:disabled { opacity: .35; cursor: not-allowed; }
+      .svg-editor-zoom-button {
+        min-width: 52px;
+        height: 30px;
+        padding: 0 7px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface-2);
+        color: var(--text-2);
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
+      }
+      .svg-editor-snap-button {
+        height: 30px;
+        padding: 0 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text-4);
+        font-size: 10px;
+        cursor: pointer;
+      }
+      .svg-editor-snap-button.active {
+        border-color: var(--indigo);
+        background: var(--indigo-s);
+        color: var(--indigo);
+      }
       .svg-editor-toolbar-separator {
         width: 1px;
         height: 22px;
@@ -263,7 +290,7 @@
         flex: 1;
         min-height: 0;
         display: grid;
-        grid-template-columns: 220px minmax(0, 1fr);
+        grid-template-columns: 260px minmax(0, 1fr);
       }
       .svg-editor-canvas {
         position: relative;
@@ -276,18 +303,65 @@
       }
       .svg-editor-canvas.tool-select { cursor: default; }
       .svg-editor-canvas:not(.tool-select) { cursor: crosshair; }
+      .svg-editor-canvas.is-panning { cursor: grabbing; }
+      .svg-editor-stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform-origin: center;
+        will-change: transform;
+      }
       .svg-editor-document {
         position: absolute;
-        inset: 28px;
+        inset: 0;
         background: #fff;
-        box-shadow: 0 18px 55px rgba(0,0,0,.35);
+        border: 2px solid #7f77dd;
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,.65),
+          0 22px 70px rgba(0,0,0,.42);
         user-select: none;
+        overflow: hidden;
       }
       .svg-editor-document > svg {
         display: block;
         width: 100%;
         height: 100%;
-        overflow: visible;
+        overflow: hidden;
+      }
+      .svg-editor-safe-area {
+        position: absolute;
+        z-index: 3;
+        inset: 5%;
+        border: 1px dashed rgba(127,119,221,.7);
+        pointer-events: none;
+      }
+      .svg-editor-safe-area span {
+        position: absolute;
+        top: 0;
+        left: 0;
+        padding: 3px 5px;
+        transform: translateY(-100%);
+        background: rgba(127,119,221,.88);
+        color: #fff;
+        font-size: 9px;
+        font-weight: 700;
+      }
+      .svg-editor-model-size {
+        position: absolute;
+        z-index: 4;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 5px 9px;
+        border: 1px solid var(--border-md);
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        color: var(--text-2);
+        box-shadow: 0 4px 18px rgba(0,0,0,.18);
+        font-size: 10px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        pointer-events: none;
       }
       .svg-editor-selection {
         position: absolute;
@@ -309,6 +383,22 @@
       .svg-editor-selection .handle-1 { right: -5px; top: -5px; cursor: nesw-resize; }
       .svg-editor-selection .handle-2 { right: -5px; bottom: -5px; }
       .svg-editor-selection .handle-3 { left: -5px; bottom: -5px; cursor: nesw-resize; }
+      .svg-editor-selection .svg-editor-rotate-handle {
+        left: 50%;
+        top: -27px;
+        transform: translateX(-50%);
+        border-radius: 50%;
+        cursor: grab;
+      }
+      .svg-editor-selection::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: -18px;
+        width: 1px;
+        height: 18px;
+        background: #7f77dd;
+      }
       .svg-editor-properties {
         display: flex;
         flex-direction: column;
@@ -446,6 +536,13 @@
         font-size: 10px;
       }
       .svg-editor-transform-grid input { width: 100%; min-width: 0; }
+      .svg-editor-document-size { margin-top: 8px; }
+      .svg-editor-dimension-note {
+        margin: 7px 0 0;
+        color: var(--text-4);
+        font-size: 9px;
+        line-height: 1.45;
+      }
       .svg-editor-stack-field {
         display: flex;
         flex-direction: column;
@@ -462,6 +559,11 @@
         border-radius: 5px;
         background: var(--surface);
         color: var(--text-1);
+      }
+      .svg-editor-field-note {
+        color: var(--text-4);
+        font-size: 9px;
+        line-height: 1.4;
       }
       .svg-editor-layers {
         display: flex;
@@ -495,6 +597,55 @@
       }
       .svg-editor-layers small { color: var(--text-4); font-size: 9px; }
       .svg-editor-layers i { color: var(--text-4); font-style: normal; text-align: center; }
+      .svg-editor-layer-row {
+        min-height: 34px;
+        display: grid;
+        grid-template-columns: minmax(0,1fr) 22px 22px 22px;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 7px;
+        border-top: 1px solid var(--border);
+        color: var(--text-2);
+      }
+      .svg-editor-layer-row:hover { background: var(--surface); }
+      .svg-editor-layer-row.selected {
+        background: var(--indigo-s);
+        color: var(--indigo);
+      }
+      .svg-editor-layer-select {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 18px minmax(0,1fr) auto;
+        align-items: center;
+        gap: 5px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .svg-editor-layer-select > span:nth-child(2) {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-size: 11px;
+      }
+      .svg-editor-layer-select small { color: var(--text-4); font-size: 9px; }
+      .svg-editor-layer-action {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-4);
+        cursor: pointer;
+      }
+      .svg-editor-layer-action:hover {
+        background: var(--surface-2);
+        color: var(--text-1);
+      }
       .svg-editor-muted {
         padding: 8px 10px;
         color: var(--text-4);
@@ -545,7 +696,7 @@
         cursor: pointer;
       }
       @media (max-width: 900px) {
-        .svg-editor-body { grid-template-columns: 190px minmax(0, 1fr); }
+        .svg-editor-body { grid-template-columns: 230px minmax(0, 1fr); }
       }
       @media (max-width: 680px) {
         .svg-editor-shell { height: auto; min-height: calc(100vh - 120px); }

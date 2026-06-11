@@ -73,14 +73,7 @@ export const resolveSlotContents = (
 // ── Conteúdo de exemplo para pré-visualização no editor ──────────────────────
 
 const SAMPLE_IMAGE =
-  'data:image/svg+xml,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120" viewBox="0 0 160 120">' +
-      '<rect width="160" height="120" fill="#c7cdd6"/>' +
-      '<path d="M0 92 L52 52 L92 82 L122 56 L160 96 L160 120 L0 120 Z" fill="#9aa3b2"/>' +
-      '<circle cx="120" cy="34" r="16" fill="#e8ebf0"/>' +
-      '</svg>',
-  );
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL3WQAAAABJRU5ErkJggg==';
 
 const SAMPLE_ICON =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
