@@ -27,6 +27,7 @@ import LetteringPanel from './LetteringPanel';
 import MotionPanel, { type MotionDefaults } from './MotionPanel';
 import AudioPanel from './AudioPanel';
 import PreviewPanel from './PreviewPanel';
+import { useTemplateMarkups } from '../../hooks/useTemplates';
 import {
   ASPECT_RATIOS,
   FPS,
@@ -166,6 +167,10 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
         defaultKenBurns: effectiveDefaults.kenBurns,
       }),
     [scenes, effectiveDefaults],
+  );
+
+  const templateMarkups = useTemplateMarkups(
+    useMemo(() => scenes.map(scene => scene.templateId), [scenes]),
   );
 
   const selectedClipFromList = useMemo(
@@ -648,7 +653,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
             <Player
               ref={playerRef}
               component={StoryboardComposition}
-              inputProps={{ scenes: displayClips, showCaptions, fps: FPS, audio }}
+              inputProps={{ scenes: displayClips, showCaptions, fps: FPS, audio, templateMarkups }}
               durationInFrames={Math.max(1, totalFrames)}
               compositionWidth={dimensions.width}
               compositionHeight={dimensions.height}

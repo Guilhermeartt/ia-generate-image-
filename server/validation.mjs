@@ -45,4 +45,15 @@ export const schemas = {
     description: z.string().trim().max(200).optional(),
   }),
   adminPlan: z.object({ planId }),
+
+  svgTemplate: z.object({
+    name: z.string().trim().min(1, 'obrigatório').max(120),
+    markup: z
+      .string()
+      .min(1, 'obrigatório')
+      .max(1_000_000, 'SVG muito grande')
+      .refine((m) => m.trimStart().startsWith('<svg'), 'markup deve ser um SVG'),
+    viewW: z.coerce.number().int().positive().max(100_000).optional(),
+    viewH: z.coerce.number().int().positive().max(100_000).optional(),
+  }),
 };

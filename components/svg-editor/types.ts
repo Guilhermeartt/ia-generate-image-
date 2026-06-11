@@ -33,3 +33,20 @@ export interface SvgLayer {
   tagName: string;
   label: string;
 }
+
+/** Papel funcional de um espaço parametrizável dentro de um modelo de cena. */
+export type SlotType = 'image' | 'text' | 'icon';
+
+/** Metadados gravados no atributo `data-slot` de um elemento do SVG. */
+export interface TemplateSlotMeta {
+  type: SlotType;
+  name: string;
+  /** Animação de entrada/saída do slot. Ausente = sem animação (sempre visível). */
+  animation?: import('./slotAnimation').SlotAnimation;
+}
+
+/** Slot resolvido: metadados + geometria derivada do elemento marcado. */
+export interface TemplateSlot extends TemplateSlotMeta {
+  id: string;
+  bounds: { x: number; y: number; width: number; height: number };
+}

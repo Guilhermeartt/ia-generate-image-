@@ -415,6 +415,10 @@ export interface Scene {
   videoImageSourceIds?: string[];
   /** Overrides por clipe (duração, Ken Burns, transição, lettering individual). */
   videoClipOverrides?: SceneVideoClipOverride[];
+  /** Modelo de cena (template SVG da biblioteca) aplicado a esta cena. */
+  templateId?: string;
+  /** Conteúdo por slot que sobrescreve o binding automático. Chave: id do slot. */
+  templateOverrides?: Record<string, { text?: string; imageHref?: string }>;
 }
 
 /** Configuração global do estúdio de vídeo do storyboard. */

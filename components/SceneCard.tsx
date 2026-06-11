@@ -27,6 +27,10 @@ import SafeTaggedDescription from './scene-card/SafeTaggedDescription';
 import SceneCardHeader from './scene-card/SceneCardHeader';
 import SceneCardCostStrip from './scene-card/SceneCardCostStrip';
 import SceneCardImagePanel from './scene-card/SceneCardImagePanel';
+import SceneTemplateControl from './scene-card/SceneTemplateControl';
+import SceneTemplateOverrides from './scene-card/SceneTemplateOverrides';
+import { useTemplateMarkup } from '../hooks/useTemplates';
+import { listSlots } from './svg-editor/svgDocument';
 import SceneCardEndFramePanel from './scene-card/SceneCardEndFramePanel';
 import SceneCardRefinementPanel from './scene-card/SceneCardRefinementPanel';
 import SceneCardCompareModal from './scene-card/SceneCardCompareModal';
@@ -68,6 +72,8 @@ interface SceneCardProps {
   onClearGraphicStyle?: (id: number) => void;
   onIncludeLetteringChange?: (id: number, include: boolean) => void;
   onSceneReferencesChange?: (id: number, updater: (current: SceneReference[] | undefined) => SceneReference[] | undefined) => void;
+  onSceneTemplateChange?: (id: number, templateId: string | undefined) => void;
+  onSceneTemplateOverrideChange?: (id: number, slotId: string, override: { text?: string; imageHref?: string } | undefined) => void;
 }
 
 const sceneArePropsEqual = (prev: SceneCardProps, next: SceneCardProps) => (
@@ -89,10 +95,16 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
     onApplyAlternativePrompt, onApplySplitSuggestion,
     onGenerateEndFrame, onUpdateSplitImage,
     onOpenGraphicStyle, onClearGraphicStyle,
-    onIncludeLetteringChange, onSceneReferencesChange,
+    onIncludeLetteringChange, onSceneReferencesChange, onSceneTemplateChange,
+    onSceneTemplateOverrideChange,
   } = props;
 
   const cardRef = useRef<HTMLDivElement>(null);
+  const templateMarkup = useTemplateMarkup(scene.templateId);
+  const templateSlots = useMemo(
+    () => (templateMarkup ? listSlots(templateMarkup) : []),
+    [templateMarkup],
+  );
   const [state, dispatch] = useReducer(sceneCardReducer, initialSceneCardState);
 
   const editImage = useEditImageOperation({
@@ -211,6 +223,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
           <div className="sc-image">
             <SceneCardImagePanel
               scene={scene}
+              templateMarkup={templateMarkup}
               referenceData={referenceData}
               isBusy={isBusy}
               busyMessage={busyMessage}
@@ -225,6 +238,23 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
               onToggleRefTooltip={() => dispatch({ type: 'TOGGLE_REF_TOOLTIP' })}
               onCloseRefTooltip={() => dispatch({ type: 'CLOSE_REF_TOOLTIP' })}
             />
+            {onSceneTemplateChange && (
+              <SceneTemplateControl
+                scene={scene}
+                disabled={isBusy}
+                onChange={(templateId) => onSceneTemplateChange(scene.id, templateId)}
+              />
+            )}
+            {onSceneTemplateOverrideChange && scene.templateId && templateSlots.length > 0 && (
+              <SceneTemplateOverrides
+                scene={scene}
+                slots={templateSlots}
+                disabled={isBusy}
+                onChange={(slotId, override) =>
+                  onSceneTemplateOverrideChange(scene.id, slotId, override)
+                }
+              />
+            )}
           </div>
 
           <div className="sc-left-meta">

@@ -10,6 +10,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import type {
+  Scene,
   SceneVideoLettering,
   VideoAudioTrack,
   VideoClipTransition,
@@ -18,6 +19,10 @@ import type {
   VideoTransitionEasing,
 } from '@/types';
 import { placeClipsOnTimeline } from './videoScenes';
+import { listSlots } from '../svg-editor/svgDocument';
+import { resolveSlotContents } from '../svg-editor/templateBinding';
+import { slotStyleAtTime } from '../svg-editor/slotAnimation';
+import { renderTemplate, type SlotStyle } from '../svg-editor/templateRender';
 
 export interface StoryboardVideoScene {
   id: string;
@@ -40,6 +45,10 @@ export interface StoryboardVideoScene {
   hasOverride: boolean;
   parentSceneOffsetSeconds: number;
   parentSceneDurationSeconds: number;
+  /** Modelo de cena aplicado (id do template). Resolvido para markup via templateMarkups. */
+  templateId?: string;
+  /** Overrides de conteúdo por slot (texto/imagem) definidos na cena. */
+  templateOverrides?: Record<string, { text?: string; imageHref?: string }>;
 }
 
 export interface StoryboardCompositionProps {
@@ -47,6 +56,8 @@ export interface StoryboardCompositionProps {
   showCaptions: boolean;
   fps: number;
   audio?: VideoAudioTrack;
+  /** Markup dos modelos por id, para clipes que usam um modelo de cena. */
+  templateMarkups?: Record<string, string>;
 }
 
 const kenBurnsTransform = (
@@ -195,6 +206,7 @@ interface ClipLayerProps {
   nextTransitionEasing: VideoTransitionEasing;
   showCaptions: boolean;
   fps: number;
+  templateMarkup?: string;
 }
 
 const isFadeColorTransition = (type: VideoClipTransition): boolean =>
@@ -209,10 +221,33 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
   nextTransitionEasing,
   showCaptions,
   fps,
+  templateMarkup,
 }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   const baseSize = Math.min(width, height);
+
+  // ── Modelo de cena (template): substitui a imagem/lettering quando presente ──
+  const templateSlots = useMemo(
+    () => (templateMarkup ? listSlots(templateMarkup) : []),
+    [templateMarkup],
+  );
+  const templateComposed = useMemo(() => {
+    if (!templateMarkup) return null;
+    const syntheticScene = {
+      imageUrl: clip.imageUrl,
+      lettering_notes: clip.lettering.text ? [clip.lettering.text] : [],
+      original_description: clip.description,
+      original_location: clip.location,
+    } as unknown as Scene;
+    const contents = resolveSlotContents(templateSlots, syntheticScene, clip.templateOverrides);
+    const localTime = frame / fps;
+    const styleById: Record<string, SlotStyle> = {};
+    for (const slot of templateSlots) {
+      if (slot.animation) styleById[slot.id] = slotStyleAtTime(slot.animation, localTime);
+    }
+    return renderTemplate(templateMarkup, contents, { styleById });
+  }, [templateMarkup, templateSlots, clip, frame, fps]);
 
   // Ken Burns com aceleração suave (ease-in-out) nas pontas — movimento mais premium.
   const kenBurnsProgress = interpolate(frame, [0, Math.max(1, durationFrames - 1)], [0, 1], {
@@ -265,6 +300,31 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
   const fadeColor = enterFade >= exitFade
     ? (clip.transitionIn === 'fade-white' ? '#ffffff' : '#000000')
     : (nextTransitionType === 'fade-white' ? '#ffffff' : '#000000');
+
+  // Quando há modelo de cena, ele é a apresentação completa do clipe: substitui a
+  // imagem nua + gradientes + lettering (os textos vêm dos slots do modelo).
+  if (templateComposed != null) {
+    return (
+      <AbsoluteFill style={transitionCss}>
+        <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#000' }}>
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              transform: kenBurns.transform,
+              transformOrigin: 'center center',
+            }}
+            dangerouslySetInnerHTML={{ __html: templateComposed }}
+          />
+        </AbsoluteFill>
+        {fadeOverlayOpacity > 0 && (
+          <AbsoluteFill
+            style={{ background: fadeColor, opacity: fadeOverlayOpacity, pointerEvents: 'none' }}
+          />
+        )}
+      </AbsoluteFill>
+    );
+  }
 
   const letteringStartFrame = Math.max(
     0,
@@ -607,6 +667,7 @@ export const StoryboardComposition: React.FC<StoryboardCompositionProps> = ({
   showCaptions,
   fps,
   audio,
+  templateMarkups,
 }) => {
   const { placements, totalFrames } = useMemo(
     () => placeClipsOnTimeline(scenes, fps),
@@ -652,6 +713,9 @@ export const StoryboardComposition: React.FC<StoryboardCompositionProps> = ({
               nextTransitionEasing={nextTransitionEasing}
               showCaptions={showCaptions}
               fps={fps}
+              templateMarkup={
+                placement.clip.templateId ? templateMarkups?.[placement.clip.templateId] : undefined
+              }
             />
           </Sequence>
         );

@@ -1,17 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import SvgCanvas from './SvgCanvas';
 import SvgPropertiesPanel from './SvgPropertiesPanel';
+import SvgTemplateLibrary from './SvgTemplateLibrary';
 import SvgToolbar from './SvgToolbar';
-import type { SvgEditorDocument, SvgTool } from './types';
+import AnimatedTemplatePreview from './AnimatedTemplatePreview';
+import { buildPreviewContents } from './templateBinding';
+import type { SlotAnimation } from './slotAnimation';
+import type { SlotType, SvgEditorDocument, SvgTool } from './types';
 import {
   createBlankSvg,
   duplicateSvgElement,
+  getSlotMeta,
   getSvgElementProperties,
+  listSlots,
   listSvgLayers,
+  markSlot,
   removeSvgElement,
   reorderSvgElement,
   resizeSvgElement,
   sanitizeSvg,
+  unmarkSlot,
   updateSvgElement,
   updateSvgText,
 } from './svgDocument';
@@ -33,11 +41,19 @@ const SvgEditor: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pointerPosition, setPointerPosition] = useState<{ x: number; y: number } | null>(null);
+  const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
   const properties = useMemo(
     () => (selectedId ? getSvgElementProperties(documentState.markup, selectedId) : null),
     [documentState.markup, selectedId],
   );
   const layers = useMemo(() => listSvgLayers(documentState.markup), [documentState.markup]);
+  const slots = useMemo(() => listSlots(documentState.markup), [documentState.markup]);
+  const previewContents = useMemo(() => buildPreviewContents(slots), [slots]);
+  const selectedSlot = useMemo(
+    () => (selectedId ? getSlotMeta(documentState.markup, selectedId) : null),
+    [documentState.markup, selectedId],
+  );
 
   const commit = useCallback(
     (before: string, after: string, _label: string, nextSelectedId?: string) => {
@@ -57,6 +73,51 @@ const SvgEditor: React.FC = () => {
       commit(documentState.markup, after, label, nextSelectedId);
     },
     [commit, documentState.markup],
+  );
+
+  const markSelectedSlot = useCallback(
+    (type: SlotType) => {
+      if (!selectedId) return;
+      applyChange(
+        markSlot(documentState.markup, selectedId, { type, name: selectedSlot?.name ?? '' }),
+        'Marcar slot',
+        selectedId,
+      );
+    },
+    [applyChange, documentState.markup, selectedId, selectedSlot],
+  );
+
+  const unmarkSelectedSlot = useCallback(() => {
+    if (!selectedId) return;
+    applyChange(unmarkSlot(documentState.markup, selectedId), 'Remover slot', selectedId);
+  }, [applyChange, documentState.markup, selectedId]);
+
+  const renameSelectedSlot = useCallback(
+    (name: string) => {
+      if (!selectedId || !selectedSlot) return;
+      applyChange(
+        markSlot(documentState.markup, selectedId, { type: selectedSlot.type, name }),
+        'Renomear slot',
+        selectedId,
+      );
+    },
+    [applyChange, documentState.markup, selectedId, selectedSlot],
+  );
+
+  const setSelectedSlotAnimation = useCallback(
+    (animation: SlotAnimation | undefined) => {
+      if (!selectedId || !selectedSlot) return;
+      applyChange(
+        markSlot(documentState.markup, selectedId, {
+          type: selectedSlot.type,
+          name: selectedSlot.name,
+          animation,
+        }),
+        'Animação do slot',
+        selectedId,
+      );
+    },
+    [applyChange, documentState.markup, selectedId, selectedSlot],
   );
 
   const undo = useCallback(() => {
@@ -203,6 +264,29 @@ const SvgEditor: React.FC = () => {
           layers={layers}
           selectedId={selectedId}
           documentName={documentState.name}
+          slot={selectedSlot}
+          slots={slots}
+          previewMode={previewMode}
+          onTogglePreview={() => setPreviewMode((value) => !value)}
+          onMarkSlot={markSelectedSlot}
+          onUnmarkSlot={unmarkSelectedSlot}
+          onRenameSlot={renameSelectedSlot}
+          onAnimationChange={setSelectedSlotAnimation}
+          libraryNode={
+            <SvgTemplateLibrary
+              documentName={documentState.name}
+              markup={documentState.markup}
+              currentTemplateId={currentTemplateId}
+              onCurrentTemplateChange={setCurrentTemplateId}
+              onLoad={(template) => {
+                commit(documentState.markup, template.markup, 'Carregar modelo');
+                setDocumentState({ name: template.name, markup: template.markup });
+                setSelectedId(null);
+                setCurrentTemplateId(template.id);
+                setMessage(`Modelo "${template.name}" carregado.`);
+              }}
+            />
+          }
           onDocumentNameChange={(name) => setDocumentState((current) => ({ ...current, name }))}
           onSelect={(id) => {
             setTool('select');
@@ -238,18 +322,39 @@ const SvgEditor: React.FC = () => {
             );
           }}
         />
-        <SvgCanvas
-          markup={documentState.markup}
-          tool={tool}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onPointerPosition={setPointerPosition}
-          onPreview={(markup, id) => {
-            setDocumentState((current) => ({ ...current, markup }));
-            if (id) setSelectedId(id);
-          }}
-          onCommit={commit}
-        />
+        {previewMode ? (
+          <div
+            className="svg-editor-canvas svg-template-preview"
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#ffffff',
+              overflow: 'hidden',
+            }}
+          >
+            <AnimatedTemplatePreview
+              markup={documentState.markup}
+              slots={slots}
+              contents={previewContents}
+              style={{ width: '100%', height: '100%', display: 'flex' }}
+            />
+          </div>
+        ) : (
+          <SvgCanvas
+            markup={documentState.markup}
+            tool={tool}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onPointerPosition={setPointerPosition}
+            onPreview={(markup, id) => {
+              setDocumentState((current) => ({ ...current, markup }));
+              if (id) setSelectedId(id);
+            }}
+            onCommit={commit}
+          />
+        )}
       </div>
       <footer className="svg-editor-statusbar">
         <span>

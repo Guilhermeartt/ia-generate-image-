@@ -356,6 +356,71 @@ export default function registerGeminiRoutes(app, { asyncRoute, imageJsonParser 
     };
   }));
 
+  app.post('/api/gemini/suggest-template-binding', asyncRoute(async (req) => {
+    const rawSlots = Array.isArray(req.body?.slots) ? req.body.slots : [];
+    const scene = req.body?.scene && typeof req.body.scene === 'object' ? req.body.scene : {};
+    if (rawSlots.length === 0 || rawSlots.length > 40) throw new Error('Lista de slots inválida.');
+
+    const textSlots = rawSlots
+      .filter((s) => s && s.type === 'text' && typeof s.id === 'string' && typeof s.name === 'string')
+      .map((s) => ({ id: String(s.id).slice(0, 200), name: String(s.name).slice(0, 120) }));
+    if (textSlots.length === 0) return { result: {}, costEntry: null };
+
+    const clip = (value) => String(value ?? '').slice(0, 4000);
+    const sceneBlock = [
+      `Lettering (texto em tela): ${clip(scene.lettering)}`,
+      `Descrição: ${clip(scene.description)}`,
+      `Local: ${clip(scene.location)}`,
+    ].join('\n');
+    const slotsBlock = textSlots.map((s) => `- "${s.name}" (id: ${s.id})`).join('\n');
+
+    const model = 'gemini-2.5-flash';
+    const prompt =
+      'Você organiza o conteúdo de uma cena de storyboard dentro de um modelo (template) visual.\n' +
+      `O modelo tem estes espaços de texto (slots), cada um com um nome que indica seu papel:\n${slotsBlock}\n\n` +
+      `Conteúdo da cena:\n${sceneBlock}\n\n` +
+      'Para CADA slot, escreva um texto curto e adequado ao papel indicado pelo NOME do slot ' +
+      '(ex.: "Título"/"Manchete" = frase curta de destaque; "Subtítulo" = complemento; ' +
+      '"Fonte"/"Crédito" = atribuição curta; "Legenda" = uma frase). ' +
+      'Use SOMENTE informação presente no conteúdo da cena — não invente fatos. ' +
+      'Se um slot não tiver conteúdo adequado, devolva string vazia. Responda em português.';
+
+    const response = await callGeminiWithRetry(() => getAiClient(req).models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              slotId: { type: Type.STRING, description: 'O id do slot.' },
+              text: { type: Type.STRING, description: 'Texto sugerido para o slot.' },
+            },
+            required: ['slotId', 'text'],
+          },
+        },
+      },
+    }));
+
+    const parsed = parseJson(response.text, 'Não foi possível sugerir os textos. O modelo retornou um formato inválido.');
+    const validIds = new Set(textSlots.map((s) => s.id));
+    const bindings = {};
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (item && validIds.has(item.slotId) && typeof item.text === 'string' && item.text.trim()) {
+          bindings[item.slotId] = item.text.trim();
+        }
+      }
+    }
+
+    return {
+      result: bindings,
+      costEntry: textCostEntry('Sugestão de textos do modelo', model, response),
+    };
+  }));
+
   app.post('/api/gemini/script-to-scenes', asyncRoute(async (req) => {
     const { scriptText, maxScenes = 80, promptTemplate } = req.body;
     const model = 'gemini-2.5-pro';

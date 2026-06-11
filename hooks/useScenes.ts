@@ -899,6 +899,24 @@ export function useScenes({
     []
   );
 
+  const handleSceneTemplateChange = useCallback((id: number, templateId: string | undefined) => {
+    setScenes(prev => prev.map(s => (s.id === id ? { ...s, templateId } : s)));
+  }, []);
+
+  const handleSceneTemplateOverrideChange = useCallback(
+    (id: number, slotId: string, override: { text?: string; imageHref?: string } | undefined) => {
+      setScenes(prev => prev.map(s => {
+        if (s.id !== id) return s;
+        const overrides = { ...(s.templateOverrides ?? {}) };
+        const clean = override && (override.text != null || override.imageHref != null) ? override : undefined;
+        if (clean) overrides[slotId] = clean;
+        else delete overrides[slotId];
+        return { ...s, templateOverrides: Object.keys(overrides).length ? overrides : undefined };
+      }));
+    },
+    [],
+  );
+
   const handleIncludeLetteringChange = useCallback((id: number, include: boolean) => {
     setScenes(prev => prev.map(s => {
       if (s.id !== id) return s;
@@ -935,5 +953,7 @@ export function useScenes({
     handleUpdateSplitImage,
     handleIncludeLetteringChange,
     handleSceneReferencesChange,
+    handleSceneTemplateChange,
+    handleSceneTemplateOverrideChange,
   };
 }

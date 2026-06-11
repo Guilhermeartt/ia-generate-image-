@@ -184,7 +184,21 @@ db.exec(`
     reset_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS svg_templates (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    markup TEXT NOT NULL,
+    view_w INTEGER,
+    view_h INTEGER,
+    thumbnail TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_stripe_events_processed_at ON stripe_events(processed_at);
+  CREATE INDEX IF NOT EXISTS idx_svg_templates_user ON svg_templates(user_id, updated_at);
 `);
 
 // ── Migrations idempotentes (para bancos pré-existentes) ─────────────────────
