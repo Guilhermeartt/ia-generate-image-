@@ -195,6 +195,54 @@ describe('slots do modelo', () => {
 });
 
 describe('sanitizeSvg — import fiel e seguro', () => {
+  it('materializa classes CSS, style inline e herança sem perder cor ou tipografia', () => {
+    const result = sanitizeSvg(`
+      <svg viewBox="0 0 400 200">
+        <style>
+          .title { fill: rgb(17, 34, 51); font: 700 28px "Inter"; letter-spacing: 1.5px; text-anchor: middle; }
+          #accent { stroke: #abcdef; stroke-width: 3px; }
+        </style>
+        <g fill="#123456" font-family="Arial" font-size="20">
+          <text id="title" class="title" x="200" y="50" textLength="180" lengthAdjust="spacingAndGlyphs">Título</text>
+          <text id="subtitle" x="10" y="100" style="fill:#fedcba;font-size:18px">Subtítulo</text>
+          <path id="accent" d="M0 0 L10 10"/>
+        </g>
+      </svg>
+    `);
+
+    expect(result).not.toContain('<style');
+    expect(result).not.toContain('class=');
+    expect(getSvgElementProperties(result, 'title')).toMatchObject({
+      fill: 'rgb(17, 34, 51)',
+      fontFamily: '"Inter"',
+      fontSize: 28,
+      fontWeight: '700',
+      letterSpacing: '1.5px',
+      textAnchor: 'middle',
+      textLength: 180,
+      lengthAdjust: 'spacingAndGlyphs',
+    });
+    expect(getSvgElementProperties(result, 'subtitle')).toMatchObject({
+      fill: 'rgb(254, 220, 186)',
+      fontFamily: 'Arial',
+      fontSize: 18,
+    });
+    expect(getSvgElementProperties(result, 'accent')).toMatchObject({
+      fill: '#123456',
+      stroke: 'rgb(171, 205, 239)',
+      strokeWidth: 3,
+    });
+  });
+
+  it('resolve currentColor herdado para a cor exibida no painel', () => {
+    const result = sanitizeSvg(`
+      <svg viewBox="0 0 10 10" color="#336699">
+        <path id="icon" fill="currentColor" d="M0 0 L10 10"/>
+      </svg>
+    `);
+    expect(getSvgElementProperties(result, 'icon')?.fill).toBe('#336699');
+  });
+
   it('preserva gradientes, filtros, blend mode, style seguro, use e imagem embutida', () => {
     const result = sanitizeSvg(`
       <svg viewBox="0 0 100 100">
@@ -214,7 +262,8 @@ describe('sanitizeSvg — import fiel e seguro', () => {
     expect(result).toContain('feGaussianBlur');
     expect(result).toContain('feDropShadow');
     expect(result).toContain('fill="url(#g)"');
-    expect(result).toContain('mix-blend-mode:multiply');
+    expect(result).toContain('mix-blend-mode="multiply"');
+    expect(result).toContain('paint-order="stroke"');
     expect(result).toContain('letter-spacing="2"');
     expect(result).toContain('<use');
     expect(result).toContain('href="#star"');

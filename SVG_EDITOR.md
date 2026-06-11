@@ -235,6 +235,15 @@ O build gera `SvgEditor` como chunk lazy independente, atualmente com cerca de
 
 ## Registro de mudanças
 
+### 2026-06-11
+
+- A importação agora materializa regras CSS estáticas seguras de classes e IDs
+  como atributos SVG, preservando cores, contornos e tipografia sem manter
+  stylesheets capazes de afetar a interface.
+- O painel resolve propriedades herdadas e `currentColor`.
+- Textos passaram a expor família, tamanho e peso da fonte, espaçamento,
+  alinhamento, `textLength` e `lengthAdjust`.
+
 ### 2026-06-10
 
 - Criado o documento de arquitetura e continuidade.

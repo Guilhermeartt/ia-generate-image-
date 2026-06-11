@@ -22,6 +22,13 @@ export interface SvgElementProperties {
   strokeDasharray: string;
   opacity: number;
   text: string;
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: string;
+  letterSpacing: string;
+  textAnchor: string;
+  textLength: number | null;
+  lengthAdjust: string;
   x: number | null;
   y: number | null;
   width: number | null;

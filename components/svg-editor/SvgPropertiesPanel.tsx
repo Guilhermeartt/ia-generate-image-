@@ -262,13 +262,97 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
           />
         </label>
         {properties?.tagName === 'text' && (
-          <label className="svg-editor-stack-field">
-            <span>Texto</span>
-            <textarea
-              value={properties.text}
-              onChange={(event) => onTextChange(event.target.value)}
-            />
-          </label>
+          <>
+            <label className="svg-editor-stack-field">
+              <span>Texto</span>
+              <textarea
+                value={properties.text}
+                onChange={(event) => onTextChange(event.target.value)}
+              />
+            </label>
+            <label className="svg-editor-inline-field">
+              <span>Tamanho da fonte</span>
+              <input
+                type="number"
+                min="1"
+                step="0.5"
+                value={properties.fontSize}
+                onChange={(event) =>
+                  onChange({ 'font-size': Number(event.target.value) }, 'Alterar tipografia')
+                }
+              />
+            </label>
+            <label className="svg-editor-inline-field">
+              <span>Fonte</span>
+              <input
+                value={properties.fontFamily}
+                onChange={(event) =>
+                  onChange({ 'font-family': event.target.value }, 'Alterar tipografia')
+                }
+              />
+            </label>
+            <label className="svg-editor-inline-field">
+              <span>Peso</span>
+              <input
+                value={properties.fontWeight}
+                onChange={(event) =>
+                  onChange({ 'font-weight': event.target.value }, 'Alterar tipografia')
+                }
+              />
+            </label>
+            <label className="svg-editor-inline-field">
+              <span>Espaçamento</span>
+              <input
+                value={properties.letterSpacing}
+                onChange={(event) =>
+                  onChange({ 'letter-spacing': event.target.value }, 'Alterar tipografia')
+                }
+              />
+            </label>
+            <label className="svg-editor-inline-field">
+              <span>Alinhamento</span>
+              <select
+                value={properties.textAnchor}
+                onChange={(event) =>
+                  onChange({ 'text-anchor': event.target.value }, 'Alterar tipografia')
+                }
+              >
+                <option value="start">Início</option>
+                <option value="middle">Centro</option>
+                <option value="end">Fim</option>
+              </select>
+            </label>
+            <label className="svg-editor-inline-field">
+              <span>Largura do texto</span>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="Automática"
+                value={properties.textLength ?? ''}
+                onChange={(event) =>
+                  onChange(
+                    { textLength: event.target.value ? Number(event.target.value) : null },
+                    'Alterar largura do texto',
+                  )
+                }
+              />
+            </label>
+            {properties.textLength !== null && (
+              <label className="svg-editor-inline-field">
+                <span>Ajuste da largura</span>
+                <select
+                  value={properties.lengthAdjust}
+                  onChange={(event) =>
+                    onChange({ lengthAdjust: event.target.value }, 'Alterar largura do texto')
+                  }
+                >
+                  <option value="spacing">Espaçamento</option>
+                  <option value="spacingAndGlyphs">Espaçamento e glifos</option>
+                </select>
+              </label>
+            )}
+          </>
         )}
       </Panel>
 

@@ -41,6 +41,7 @@ const EDITABLE_ELEMENTS = new Set([
 
 const ALLOWED_ATTRIBUTES = new Set([
   'id',
+  'class',
   'viewBox',
   'width',
   'height',
@@ -131,6 +132,78 @@ const URL_ATTRIBUTES = new Set([
   'fill', 'stroke', 'clip-path', 'mask', 'filter',
   'marker-start', 'marker-mid', 'marker-end', 'marker',
 ]);
+
+const CSS_PRESENTATION_ATTRIBUTES = new Set([
+  'color',
+  'fill',
+  'fill-opacity',
+  'fill-rule',
+  'stroke',
+  'stroke-width',
+  'stroke-opacity',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'stroke-miterlimit',
+  'opacity',
+  'display',
+  'visibility',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'font-style',
+  'font-variant',
+  'font-stretch',
+  'letter-spacing',
+  'word-spacing',
+  'text-anchor',
+  'dominant-baseline',
+  'alignment-baseline',
+  'baseline-shift',
+  'text-decoration',
+  'writing-mode',
+  'white-space',
+  'paint-order',
+  'mix-blend-mode',
+  'isolation',
+  'clip-rule',
+  'shape-rendering',
+  'image-rendering',
+  'text-rendering',
+  'vector-effect',
+]);
+
+const INHERITED_PRESENTATION_ATTRIBUTES = new Set([
+  'color',
+  'fill',
+  'fill-opacity',
+  'fill-rule',
+  'stroke',
+  'stroke-width',
+  'stroke-opacity',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'stroke-miterlimit',
+  'font-family',
+  'font-size',
+  'font-weight',
+  'font-style',
+  'font-variant',
+  'font-stretch',
+  'letter-spacing',
+  'word-spacing',
+  'text-anchor',
+  'dominant-baseline',
+  'alignment-baseline',
+  'baseline-shift',
+  'text-decoration',
+  'writing-mode',
+  'white-space',
+  'visibility',
+]);
 const ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_.:-]*$/;
 const INTERNAL_REF = /^#[A-Za-z_][\w.:-]*$/;
 
@@ -151,6 +224,108 @@ const sanitizeStyle = (value: string): string | null => {
   if (STYLE_BLOCKLIST.test(value)) return null;
   const trimmed = value.trim();
   return trimmed || null;
+};
+
+interface CssDeclaration {
+  name: string;
+  value: string;
+  important: boolean;
+}
+
+interface AppliedCssDeclaration extends CssDeclaration {
+  specificity: number;
+  order: number;
+}
+
+const parseCssDeclarations = (cssText: string): CssDeclaration[] => {
+  const probe = document.createElement('span');
+  probe.setAttribute('style', cssText);
+  return Array.from(probe.style)
+    .map((name) => ({
+      name,
+      value: probe.style.getPropertyValue(name).trim(),
+      important: probe.style.getPropertyPriority(name) === 'important',
+    }))
+    .filter(
+      ({ name, value }) =>
+        CSS_PRESENTATION_ATTRIBUTES.has(name) &&
+        !!value &&
+        isSafeAttributeValue(name, value) &&
+        !STYLE_BLOCKLIST.test(`${name}:${value}`),
+    );
+};
+
+const selectorSpecificity = (selector: string): number => {
+  const ids = selector.match(/#[\w-]+/g)?.length ?? 0;
+  const classes = selector.match(/\.[\w-]+|\[[^\]]+\]/g)?.length ?? 0;
+  const elements = selector.match(/(^|[\s>+~])([a-zA-Z][\w-]*)/g)?.length ?? 0;
+  return ids * 100 + classes * 10 + elements;
+};
+
+const materializeStylesheets = (sourceDocument: XMLDocument): void => {
+  const applied = new Map<Element, Map<string, AppliedCssDeclaration>>();
+  let order = 0;
+
+  for (const styleElement of Array.from(sourceDocument.querySelectorAll('style'))) {
+    const cssText = styleElement.textContent || '';
+    if (!sanitizeStyle(cssText)) continue;
+
+    const styleHost = document.createElement('style');
+    styleHost.textContent = cssText;
+    document.head.appendChild(styleHost);
+    try {
+      for (const rule of Array.from(styleHost.sheet?.cssRules ?? [])) {
+        if (rule.type !== CSSRule.STYLE_RULE) continue;
+        const styleRule = rule as CSSStyleRule;
+        for (const selector of styleRule.selectorText.split(',')) {
+          let matches: Element[] = [];
+          try {
+            matches = Array.from(sourceDocument.querySelectorAll(selector.trim()));
+          } catch {
+            continue;
+          }
+          const specificity = selectorSpecificity(selector);
+          const declarations = parseCssDeclarations(styleRule.style.cssText);
+          for (const element of matches) {
+            const elementRules = applied.get(element) ?? new Map<string, AppliedCssDeclaration>();
+            for (const declaration of declarations) {
+              const previous = elementRules.get(declaration.name);
+              const wins =
+                !previous ||
+                (declaration.important && !previous.important) ||
+                (declaration.important === previous.important &&
+                  (specificity > previous.specificity ||
+                    (specificity === previous.specificity && order >= previous.order)));
+              if (wins) elementRules.set(declaration.name, { ...declaration, specificity, order });
+            }
+            applied.set(element, elementRules);
+          }
+          order += 1;
+        }
+      }
+    } finally {
+      styleHost.remove();
+    }
+  }
+
+  for (const element of Array.from(sourceDocument.querySelectorAll('*'))) {
+    const elementRules = applied.get(element) ?? new Map<string, AppliedCssDeclaration>();
+    for (const declaration of parseCssDeclarations(element.getAttribute('style') || '')) {
+      const previous = elementRules.get(declaration.name);
+      if (!previous?.important || declaration.important) {
+        elementRules.set(declaration.name, {
+          ...declaration,
+          specificity: 1000,
+          order: Number.MAX_SAFE_INTEGER,
+        });
+      }
+    }
+    for (const declaration of elementRules.values()) {
+      element.setAttribute(declaration.name, declaration.value);
+    }
+    element.removeAttribute('style');
+    element.removeAttribute('class');
+  }
 };
 
 let idCounter = 0;
@@ -233,6 +408,7 @@ const copySafeElement = (
 
 export const sanitizeSvg = (markup: string): string => {
   const sourceDocument = parseSvg(markup);
+  materializeStylesheets(sourceDocument);
   const targetDocument = document.implementation.createDocument(SVG_NS, 'svg', null);
   const sanitized = copySafeElement(
     sourceDocument.documentElement,
@@ -296,17 +472,47 @@ export const getSvgElementProperties = (
   const element = parseSvg(markup).getElementById(id);
   if (!element) return null;
   const bounds = getElementAttributeBounds(element);
+  const fill = effectivePresentationValue(element, 'fill', 'none');
+  const resolvedFill =
+    fill === 'currentColor' ? effectivePresentationValue(element, 'color', '#000000') : fill;
+  const stroke = effectivePresentationValue(element, 'stroke', 'none');
+  const resolvedStroke =
+    stroke === 'currentColor' ? effectivePresentationValue(element, 'color', '#000000') : stroke;
   return {
     id,
     tagName: element.localName,
-    fill: element.getAttribute('fill') || 'none',
-    stroke: element.getAttribute('stroke') || 'none',
-    strokeWidth: Number.parseFloat(element.getAttribute('stroke-width') || '0'),
-    strokeDasharray: element.getAttribute('stroke-dasharray') || '',
-    opacity: Number.parseFloat(element.getAttribute('opacity') || '1'),
+    fill: resolvedFill,
+    stroke: resolvedStroke,
+    strokeWidth: Number.parseFloat(effectivePresentationValue(element, 'stroke-width', '0')),
+    strokeDasharray: effectivePresentationValue(element, 'stroke-dasharray', ''),
+    opacity: Number.parseFloat(effectivePresentationValue(element, 'opacity', '1')),
     text: element.textContent || '',
+    fontFamily: effectivePresentationValue(element, 'font-family', 'sans-serif'),
+    fontSize: Number.parseFloat(effectivePresentationValue(element, 'font-size', '16')) || 16,
+    fontWeight: effectivePresentationValue(element, 'font-weight', '400'),
+    letterSpacing: effectivePresentationValue(element, 'letter-spacing', 'normal'),
+    textAnchor: effectivePresentationValue(element, 'text-anchor', 'start'),
+    textLength: element.hasAttribute('textLength')
+      ? Number.parseFloat(element.getAttribute('textLength') || '0')
+      : null,
+    lengthAdjust: element.getAttribute('lengthAdjust') || 'spacing',
     ...bounds,
   };
+};
+
+const effectivePresentationValue = (
+  element: Element,
+  name: string,
+  fallback: string,
+): string => {
+  let current: Element | null = element;
+  while (current) {
+    const direct = current.getAttribute(name);
+    if (direct && direct !== 'inherit') return direct;
+    if (!INHERITED_PRESENTATION_ATTRIBUTES.has(name)) break;
+    current = current.parentElement;
+  }
+  return fallback;
 };
 
 const numberAttribute = (element: Element, name: string): number =>
