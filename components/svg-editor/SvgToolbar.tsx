@@ -6,6 +6,7 @@ interface SvgToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   hasSelection: boolean;
+  isImporting: boolean;
   onToolChange: (tool: SvgTool) => void;
   onUpload: (files: File[]) => void;
   onUndo: () => void;
@@ -22,6 +23,8 @@ interface SvgToolbarProps {
   onFit: () => void;
   snapToGrid: boolean;
   onToggleSnap: () => void;
+  showSafeArea: boolean;
+  onToggleSafeArea: () => void;
 }
 
 const GROUPS: Array<Array<{ id: SvgTool; label: string; icon: string }>> = [
@@ -67,6 +70,7 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
   canUndo,
   canRedo,
   hasSelection,
+  isImporting,
   onToolChange,
   onUpload,
   onUndo,
@@ -83,6 +87,8 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
   onFit,
   snapToGrid,
   onToggleSnap,
+  showSafeArea,
+  onToggleSafeArea,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
@@ -98,6 +104,7 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
               onClick={() => onToolChange(item.id)}
               title={item.label}
               aria-label={item.label}
+              aria-pressed={tool === item.id}
             >
               {item.icon}
             </button>
@@ -145,13 +152,27 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
       >
         Grade 10
       </button>
+      <button
+        className={`svg-editor-snap-button${showSafeArea ? ' active' : ''}`}
+        type="button"
+        aria-pressed={showSafeArea}
+        title="Mostrar ou ocultar a margem segura de 5%"
+        onClick={onToggleSafeArea}
+      >
+        Área segura
+      </button>
 
       <div className="svg-editor-toolbar-spacer" />
       <button className="btn btn-ghost" type="button" onClick={onNew}>
         Novo
       </button>
-      <button className="btn btn-ghost" type="button" onClick={() => inputRef.current?.click()}>
-        Importar
+      <button
+        className="btn btn-ghost"
+        type="button"
+        disabled={isImporting}
+        onClick={() => inputRef.current?.click()}
+      >
+        {isImporting ? 'Importando…' : 'Importar'}
       </button>
       <input
         ref={inputRef}
@@ -165,7 +186,7 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
           event.currentTarget.value = '';
         }}
       />
-      <button className="btn btn-primary" type="button" onClick={onExport}>
+      <button className="btn btn-primary" type="button" disabled={isImporting} onClick={onExport}>
         Exportar
       </button>
     </div>

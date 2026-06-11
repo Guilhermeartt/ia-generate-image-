@@ -35,6 +35,11 @@ interface HistoryState {
   future: string[];
 }
 
+interface EditorMessage {
+  text: string;
+  tone: 'success' | 'warning' | 'error' | 'info';
+}
+
 const DRAFT_KEY = 'svg-editor-draft-v1';
 
 const initialDocument = (): SvgEditorDocument => {
@@ -57,7 +62,13 @@ const SvgEditor: React.FC = () => {
   const [history, setHistory] = useState<HistoryState>({ past: [], future: [] });
   const [tool, setTool] = useState<SvgTool>('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<EditorMessage | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [showSafeArea, setShowSafeArea] = useState(true);
+  const [draftSaved, setDraftSaved] = useState(true);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
   const [pointerPosition, setPointerPosition] = useState<{ x: number; y: number } | null>(null);
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
@@ -83,6 +94,7 @@ const SvgEditor: React.FC = () => {
       const now = Date.now();
       const key = `${label}:${nextSelectedId ?? selectedId ?? ''}`;
       const coalesce = lastCommitRef.current?.key === key && now - lastCommitRef.current.time < 700;
+      setDraftSaved(false);
       setHistory((current) => ({
         past: coalesce ? current.past : [...current.past, before].slice(-100),
         future: [],
@@ -155,6 +167,8 @@ const SvgEditor: React.FC = () => {
 
   const undo = useCallback(() => {
     lastCommitRef.current = null;
+    if (history.past.length === 0) return;
+    setDraftSaved(false);
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
       if (!previous) return current;
@@ -165,10 +179,12 @@ const SvgEditor: React.FC = () => {
         future: [documentState.markup, ...current.future].slice(0, 50),
       };
     });
-  }, [documentState.markup]);
+  }, [documentState.markup, history.past.length]);
 
   const redo = useCallback(() => {
     lastCommitRef.current = null;
+    if (history.future.length === 0) return;
+    setDraftSaved(false);
     setHistory((current) => {
       const next = current.future[0];
       if (!next) return current;
@@ -179,7 +195,7 @@ const SvgEditor: React.FC = () => {
         future: current.future.slice(1),
       };
     });
-  }, [documentState.markup]);
+  }, [documentState.markup, history.future.length]);
 
   const removeSelected = useCallback(() => {
     if (!selectedId) return;
@@ -207,6 +223,9 @@ const SvgEditor: React.FC = () => {
 
   const importFiles = useCallback(
     async (files: File[]) => {
+      if (isImporting) return;
+      setIsImporting(true);
+      setMessage({ text: 'Preparando arquivos e incorporando vínculos…', tone: 'info' });
       try {
         const file = files.find(
           (candidate) =>
@@ -233,14 +252,20 @@ const SvgEditor: React.FC = () => {
                 .map((href) => href.replaceAll('\\', '/').split('/').pop())
                 .join(', ')}. Selecione esses arquivos junto com o SVG.`
             : '';
-        setMessage(
-          `"${file.name}" importado com segurança.${embedded ? ` ${embedded}.` : ''}${missing}`,
-        );
+        setMessage({
+          text: `"${file.name}" importado com segurança.${embedded ? ` ${embedded}.` : ''}${missing}`,
+          tone: prepared.unresolvedImages.length > 0 ? 'warning' : 'success',
+        });
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Não foi possível importar o SVG.');
+        setMessage({
+          text: error instanceof Error ? error.message : 'Não foi possível importar o SVG.',
+          tone: 'error',
+        });
+      } finally {
+        setIsImporting(false);
       }
     },
-    [commit, documentState.markup],
+    [commit, documentState.markup, isImporting],
   );
 
   const exportSvg = useCallback(() => {
@@ -265,12 +290,19 @@ const SvgEditor: React.FC = () => {
     const timeout = window.setTimeout(() => {
       try {
         window.localStorage.setItem(DRAFT_KEY, JSON.stringify(documentState));
+        setDraftSaved(true);
       } catch {
         // Persistência local indisponível; o editor continua funcional.
       }
     }, 350);
     return () => window.clearTimeout(timeout);
   }, [documentState]);
+
+  useEffect(() => {
+    if (!message || !['success', 'info'].includes(message.tone)) return;
+    const timeout = window.setTimeout(() => setMessage(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -286,6 +318,16 @@ const SvgEditor: React.FC = () => {
       if (command && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         duplicateSelected();
+        return;
+      }
+      if (command && event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        importInputRef.current?.click();
+        return;
+      }
+      if (command && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        exportSvg();
         return;
       }
       if (command && event.key === '0') {
@@ -324,6 +366,7 @@ const SvgEditor: React.FC = () => {
     applyChange,
     documentState.markup,
     duplicateSelected,
+    exportSvg,
     redo,
     removeSelected,
     selectedId,
@@ -333,20 +376,50 @@ const SvgEditor: React.FC = () => {
   return (
     <section
       className="svg-editor-shell anim-fade"
+      onDragEnter={(event) => {
+        event.preventDefault();
+        dragDepthRef.current += 1;
+        if (event.dataTransfer.types.includes('Files')) setIsDraggingFiles(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+      }}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
+        dragDepthRef.current = 0;
+        setIsDraggingFiles(false);
         const files = Array.from(event.dataTransfer.files);
         if (files.some((file) => file.name.toLowerCase().endsWith('.svg'))) {
           void importFiles(files);
+        } else {
+          setMessage({
+            text: 'Inclua um arquivo SVG junto com os assets vinculados.',
+            tone: 'error',
+          });
         }
       }}
     >
+      <input
+        ref={importInputRef}
+        className="hidden"
+        type="file"
+        accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp,.ttf,.otf,.woff,.woff2"
+        multiple
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          if (files.length > 0) void importFiles(files);
+          event.currentTarget.value = '';
+        }}
+      />
       <SvgToolbar
         tool={tool}
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         hasSelection={!!selectedId}
+        isImporting={isImporting}
         onToolChange={setTool}
         onUpload={(files) => void importFiles(files)}
         onUndo={undo}
@@ -365,11 +438,26 @@ const SvgEditor: React.FC = () => {
         onFit={() => setCamera({ x: 0, y: 0, zoom: 1 })}
         snapToGrid={snapToGrid}
         onToggleSnap={() => setSnapToGrid((value) => !value)}
+        showSafeArea={showSafeArea}
+        onToggleSafeArea={() => setShowSafeArea((value) => !value)}
       />
       {message && (
-        <button className="svg-editor-message" type="button" onClick={() => setMessage(null)}>
-          {message}
-        </button>
+        <div
+          className={`svg-editor-message ${message.tone}`}
+          role={message.tone === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          <span>{message.text}</span>
+          <button type="button" onClick={() => setMessage(null)} aria-label="Fechar mensagem">
+            ×
+          </button>
+        </div>
+      )}
+      {isDraggingFiles && (
+        <div className="svg-editor-drop-overlay" role="status">
+          <strong>Solte para importar</strong>
+          <span>Inclua o SVG, imagens e fontes vinculadas</span>
+        </div>
       )}
       <div className="svg-editor-body">
         <SvgPropertiesPanel
@@ -382,6 +470,7 @@ const SvgEditor: React.FC = () => {
           slot={selectedSlot}
           slots={slots}
           previewMode={previewMode}
+          isImporting={isImporting}
           onTogglePreview={() => setPreviewMode((value) => !value)}
           onMarkSlot={markSelectedSlot}
           onUnmarkSlot={unmarkSelectedSlot}
@@ -398,11 +487,14 @@ const SvgEditor: React.FC = () => {
                 setDocumentState({ name: template.name, markup: template.markup });
                 setSelectedId(null);
                 setCurrentTemplateId(template.id);
-                setMessage(`Modelo "${template.name}" carregado.`);
+                setMessage({ text: `Modelo "${template.name}" carregado.`, tone: 'success' });
               }}
             />
           }
-          onDocumentNameChange={(name) => setDocumentState((current) => ({ ...current, name }))}
+          onDocumentNameChange={(name) => {
+            setDraftSaved(false);
+            setDocumentState((current) => ({ ...current, name }));
+          }}
           onSelect={(id) => {
             setTool('select');
             setSelectedId(id);
@@ -480,6 +572,7 @@ const SvgEditor: React.FC = () => {
             camera={camera}
             onCameraChange={setCamera}
             snapToGrid={snapToGrid}
+            showSafeArea={showSafeArea}
             onSelect={setSelectedId}
             onPointerPosition={setPointerPosition}
             onCommit={commit}
@@ -501,6 +594,11 @@ const SvgEditor: React.FC = () => {
         <span>
           <strong>{layers.length}</strong> objeto{layers.length === 1 ? '' : 's'}
         </span>
+        <span className="svg-editor-status-save">
+          <i className={draftSaved ? 'saved' : ''} />
+          {draftSaved ? 'Rascunho salvo' : 'Salvando…'}
+        </span>
+        <span className="svg-editor-status-hint">Espaço: mover canvas · Ctrl/Cmd+S: exportar</span>
       </footer>
     </section>
   );

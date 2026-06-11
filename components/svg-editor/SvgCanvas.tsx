@@ -10,6 +10,7 @@ interface SvgCanvasProps {
   camera: SvgCamera;
   onCameraChange: (camera: SvgCamera) => void;
   snapToGrid: boolean;
+  showSafeArea: boolean;
   onSelect: (id: string | null) => void;
   onPointerPosition: (point: { x: number; y: number } | null) => void;
   onCommit: (before: string, after: string, label: string, selectedId?: string) => void;
@@ -28,7 +29,16 @@ interface Bounds {
 }
 
 interface Gesture {
-  kind: 'move' | 'resize' | 'rotate' | 'rect' | 'ellipse' | 'line' | 'freehand' | 'star' | 'triangle';
+  kind:
+    | 'move'
+    | 'resize'
+    | 'rotate'
+    | 'rect'
+    | 'ellipse'
+    | 'line'
+    | 'freehand'
+    | 'star'
+    | 'triangle';
   before: string;
   start: Point;
   id: string;
@@ -82,6 +92,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   camera,
   onCameraChange,
   snapToGrid,
+  showSafeArea,
   onSelect,
   onPointerPosition,
   onCommit,
@@ -93,6 +104,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   const panRef = useRef<{ start: Point; camera: SvgCamera } | null>(null);
   const [viewport, setViewport] = useState({ width: 1, height: 1 });
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
 
   const dimensions = viewBox ?? { width: 1280, height: 720 };
   const fitScale = Math.max(
@@ -151,7 +163,10 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
 
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
-      if (event.code === 'Space' && !(event.target as HTMLElement | null)?.matches('input,textarea')) {
+      if (
+        event.code === 'Space' &&
+        !(event.target as HTMLElement | null)?.matches('input,textarea')
+      ) {
         spacePressedRef.current = true;
         event.preventDefault();
       }
@@ -173,9 +188,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   };
 
   const snapPoint = (point: Point): Point =>
-    snapToGrid
-      ? { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 }
-      : point;
+    snapToGrid ? { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 } : point;
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button === 1 || spacePressedRef.current) {
@@ -183,6 +196,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
         start: { x: event.clientX, y: event.clientY },
         camera,
       };
+      setIsPanning(true);
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
@@ -231,9 +245,10 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
       const id = locked ? null : editable?.id || null;
       onSelect(id);
       if (!id || !editable) return;
-      const parentMatrix = editable.parentElement instanceof SVGGraphicsElement
-        ? editable.parentElement.getScreenCTM()
-        : getSvg()?.getScreenCTM();
+      const parentMatrix =
+        editable.parentElement instanceof SVGGraphicsElement
+          ? editable.parentElement.getScreenCTM()
+          : getSvg()?.getScreenCTM();
       const matrix = editable.transform.baseVal.consolidate()?.matrix;
       gestureRef.current = {
         kind: 'move',
@@ -267,18 +282,34 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
       const appended =
         kind === 'rect'
           ? appendSvgElement(markup, 'rect', {
-              x: point.x, y: point.y, width: 1, height: 1, rx: 6,
-              fill: '#eeedfe', stroke: '#7f77dd', 'stroke-width': 2,
+              x: point.x,
+              y: point.y,
+              width: 1,
+              height: 1,
+              rx: 6,
+              fill: '#eeedfe',
+              stroke: '#7f77dd',
+              'stroke-width': 2,
             })
           : kind === 'ellipse'
             ? appendSvgElement(markup, 'ellipse', {
-                cx: point.x, cy: point.y, rx: 1, ry: 1,
-                fill: '#e1f5ee', stroke: '#1d9e75', 'stroke-width': 2,
+                cx: point.x,
+                cy: point.y,
+                rx: 1,
+                ry: 1,
+                fill: '#e1f5ee',
+                stroke: '#1d9e75',
+                'stroke-width': 2,
               })
             : kind === 'line'
               ? appendSvgElement(markup, 'line', {
-                  x1: point.x, y1: point.y, x2: point.x, y2: point.y,
-                  fill: 'none', stroke: '#534ab7', 'stroke-width': 3,
+                  x1: point.x,
+                  y1: point.y,
+                  x2: point.x,
+                  y2: point.y,
+                  fill: 'none',
+                  stroke: '#534ab7',
+                  'stroke-width': 3,
                 })
               : appendSvgElement(markup, 'path', {
                   d: `M ${point.x} ${point.y}`,
@@ -408,7 +439,10 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
         element.setAttribute(
           'd',
           gesture.points
-            .map((item, index) => `${index === 0 ? 'M' : 'L'} ${item.x.toFixed(2)} ${item.y.toFixed(2)}`)
+            .map(
+              (item, index) =>
+                `${index === 0 ? 'M' : 'L'} ${item.x.toFixed(2)} ${item.y.toFixed(2)}`,
+            )
             .join(' '),
         );
       }
@@ -419,6 +453,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   const finishGesture = (event: React.PointerEvent<HTMLDivElement>) => {
     if (panRef.current) {
       panRef.current = null;
+      setIsPanning(false);
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
@@ -456,7 +491,8 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   return (
     <div
       ref={canvasRef}
-      className={`svg-editor-canvas tool-${tool}`}
+      className={`svg-editor-canvas tool-${tool}${isPanning ? ' is-panning' : ''}`}
+      aria-label="Área de edição do modelo SVG"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerLeave={() => onPointerPosition(null)}
@@ -480,9 +516,11 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
           className="svg-editor-document"
           dangerouslySetInnerHTML={{ __html: markup }}
         />
-        <div className="svg-editor-safe-area">
-          <span>Margem segura 5%</span>
-        </div>
+        {showSafeArea && (
+          <div className="svg-editor-safe-area">
+            <span>Margem segura 5%</span>
+          </div>
+        )}
       </div>
       {selectionRect && (
         <div

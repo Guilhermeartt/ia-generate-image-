@@ -26,6 +26,7 @@ interface SvgPropertiesPanelProps {
   slots: TemplateSlot[];
   /** Se o canvas está mostrando a pré-visualização preenchida do modelo. */
   previewMode: boolean;
+  isImporting: boolean;
   onTogglePreview: () => void;
   onDocumentNameChange: (name: string) => void;
   onSelect: (id: string) => void;
@@ -70,7 +71,11 @@ const SWATCHES = [
 const normalizeColor = (value: string, fallback: string): string => {
   if (/^#[0-9a-f]{6}$/i.test(value)) return value;
   const short = value.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
-  if (short) return `#${short.slice(1).map((part) => part + part).join('')}`;
+  if (short)
+    return `#${short
+      .slice(1)
+      .map((part) => part + part)
+      .join('')}`;
   const rgb = value.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
   if (rgb) {
     return `#${rgb
@@ -99,6 +104,7 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
   slot,
   slots,
   previewMode,
+  isImporting,
   onTogglePreview,
   onDocumentNameChange,
   onSelect,
@@ -191,221 +197,237 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
         </p>
       </Panel>
 
-      <Panel title="Preenchimento">
-        <div className="svg-editor-color-row">
-          <input
-            type="color"
-            value={normalizeColor(properties?.fill || '', '#7f77dd')}
-            disabled={!properties}
-            aria-label="Preenchimento"
-            onChange={(event) => onChange({ fill: event.target.value }, 'Alterar preenchimento')}
-          />
-          <input
-            className="svg-editor-small-input"
-            value={properties?.fill || 'none'}
-            disabled={!properties}
-            aria-label="Cor de preenchimento"
-            onChange={(event) => onChange({ fill: event.target.value }, 'Alterar preenchimento')}
-          />
-          <button
-            type="button"
-            className="svg-editor-mini-button"
-            disabled={!properties}
-            onClick={() => onChange({ fill: 'none' }, 'Remover preenchimento')}
-            title="Sem preenchimento"
-          >
-            ∅
-          </button>
-        </div>
-        <div className="svg-editor-swatches">
-          {SWATCHES.map((color) => (
-            <button
-              key={color}
-              type="button"
-              disabled={!properties}
-              style={{ background: color }}
-              title={color}
-              onClick={() => onChange({ fill: color }, 'Alterar preenchimento')}
-            />
-          ))}
-        </div>
-      </Panel>
+      {!properties && (
+        <section className="svg-editor-selection-empty" aria-live="polite">
+          <strong>Nenhum objeto selecionado</strong>
+          <span>Selecione uma camada ou clique em um elemento para editar suas propriedades.</span>
+        </section>
+      )}
 
-      <Panel title="Contorno">
-        <div className="svg-editor-color-row">
-          <input
-            type="color"
-            value={normalizeColor(properties?.stroke || '', '#534ab7')}
-            disabled={!properties}
-            aria-label="Contorno"
-            onChange={(event) => onChange({ stroke: event.target.value }, 'Alterar contorno')}
-          />
-          <input
-            className="svg-editor-small-input"
-            value={properties?.stroke || 'none'}
-            disabled={!properties}
-            aria-label="Cor do contorno"
-            onChange={(event) => onChange({ stroke: event.target.value }, 'Alterar contorno')}
-          />
-        </div>
-        <label className="svg-editor-inline-field">
-          <span>Espessura</span>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.5"
-            value={properties?.strokeWidth ?? 0}
-            disabled={!properties}
-            onChange={(event) =>
-              onChange({ 'stroke-width': Number(event.target.value) }, 'Alterar contorno')
-            }
-          />
-        </label>
-        <label className="svg-editor-inline-field">
-          <span>Tracejado</span>
-          <select
-            value={properties?.strokeDasharray ?? ''}
-            disabled={!properties}
-            onChange={(event) =>
-              onChange({ 'stroke-dasharray': event.target.value || null }, 'Alterar tracejado')
-            }
-          >
-            <option value="">Sólido</option>
-            <option value="4 4">Pontilhado</option>
-            <option value="8 4">Traçado</option>
-            <option value="12 4 4 4">Traço-ponto</option>
-          </select>
-        </label>
-      </Panel>
-
-      <Panel title="Transformar">
-        <div className="svg-editor-transform-grid">
-          {(['x', 'y', 'width', 'height'] as const).map((key) => (
-            <label key={key}>
-              <span>{{ x: 'X', y: 'Y', width: 'L', height: 'A' }[key]}</span>
+      {properties && (
+        <>
+          <Panel title="Preenchimento">
+            <div className="svg-editor-color-row">
               <input
-                type="number"
-                value={bounds[key]}
-                disabled={!supportsBounds || properties?.[key] === null}
-                onChange={(event) => setBound(key, Number(event.target.value))}
-              />
-            </label>
-          ))}
-        </div>
-        <label className="svg-editor-inline-field">
-          <span>Opacidade</span>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={Math.round((properties?.opacity ?? 1) * 100)}
-            disabled={!properties}
-            onChange={(event) =>
-              onChange({ opacity: Number(event.target.value) / 100 }, 'Alterar opacidade')
-            }
-          />
-        </label>
-        {properties?.tagName === 'text' && (
-          <>
-            <label className="svg-editor-stack-field">
-              <span>Texto</span>
-              <textarea
-                value={properties.text}
-                disabled={properties.structuredText}
-                onChange={(event) => onTextChange(event.target.value)}
-              />
-              {properties.structuredText && (
-                <small className="svg-editor-field-note">
-                  Texto estruturado com tspan/textPath: conteúdo protegido para preservar o layout.
-                </small>
-              )}
-            </label>
-            <label className="svg-editor-inline-field">
-              <span>Tamanho da fonte</span>
-              <input
-                type="number"
-                min="1"
-                step="0.5"
-                value={properties.fontSize}
+                type="color"
+                value={normalizeColor(properties?.fill || '', '#7f77dd')}
+                disabled={!properties}
+                aria-label="Preenchimento"
                 onChange={(event) =>
-                  onChange({ 'font-size': Number(event.target.value) }, 'Alterar tipografia')
+                  onChange({ fill: event.target.value }, 'Alterar preenchimento')
                 }
               />
-            </label>
-            <label className="svg-editor-inline-field">
-              <span>Fonte</span>
               <input
-                value={properties.fontFamily}
+                className="svg-editor-small-input"
+                value={properties?.fill || 'none'}
+                disabled={!properties}
+                aria-label="Cor de preenchimento"
                 onChange={(event) =>
-                  onChange({ 'font-family': event.target.value }, 'Alterar tipografia')
+                  onChange({ fill: event.target.value }, 'Alterar preenchimento')
                 }
               />
-            </label>
-            <label className="svg-editor-inline-field">
-              <span>Peso</span>
-              <input
-                value={properties.fontWeight}
-                onChange={(event) =>
-                  onChange({ 'font-weight': event.target.value }, 'Alterar tipografia')
-                }
-              />
-            </label>
-            <label className="svg-editor-inline-field">
-              <span>Espaçamento</span>
-              <input
-                value={properties.letterSpacing}
-                onChange={(event) =>
-                  onChange({ 'letter-spacing': event.target.value }, 'Alterar tipografia')
-                }
-              />
-            </label>
-            <label className="svg-editor-inline-field">
-              <span>Alinhamento</span>
-              <select
-                value={properties.textAnchor}
-                onChange={(event) =>
-                  onChange({ 'text-anchor': event.target.value }, 'Alterar tipografia')
-                }
+              <button
+                type="button"
+                className="svg-editor-mini-button"
+                disabled={!properties}
+                onClick={() => onChange({ fill: 'none' }, 'Remover preenchimento')}
+                title="Sem preenchimento"
               >
-                <option value="start">Início</option>
-                <option value="middle">Centro</option>
-                <option value="end">Fim</option>
-              </select>
-            </label>
+                ∅
+              </button>
+            </div>
+            <div className="svg-editor-swatches">
+              {SWATCHES.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  disabled={!properties}
+                  style={{ background: color }}
+                  title={color}
+                  onClick={() => onChange({ fill: color }, 'Alterar preenchimento')}
+                />
+              ))}
+            </div>
+          </Panel>
+
+          <Panel title="Contorno">
+            <div className="svg-editor-color-row">
+              <input
+                type="color"
+                value={normalizeColor(properties?.stroke || '', '#534ab7')}
+                disabled={!properties}
+                aria-label="Contorno"
+                onChange={(event) => onChange({ stroke: event.target.value }, 'Alterar contorno')}
+              />
+              <input
+                className="svg-editor-small-input"
+                value={properties?.stroke || 'none'}
+                disabled={!properties}
+                aria-label="Cor do contorno"
+                onChange={(event) => onChange({ stroke: event.target.value }, 'Alterar contorno')}
+              />
+            </div>
             <label className="svg-editor-inline-field">
-              <span>Largura do texto</span>
+              <span>Espessura</span>
               <input
                 type="number"
                 min="0"
+                max="100"
                 step="0.5"
-                placeholder="Automática"
-                value={properties.textLength ?? ''}
+                value={properties?.strokeWidth ?? 0}
+                disabled={!properties}
                 onChange={(event) =>
-                  onChange(
-                    { textLength: event.target.value ? Number(event.target.value) : null },
-                    'Alterar largura do texto',
-                  )
+                  onChange({ 'stroke-width': Number(event.target.value) }, 'Alterar contorno')
                 }
               />
             </label>
-            {properties.textLength !== null && (
-              <label className="svg-editor-inline-field">
-                <span>Ajuste da largura</span>
-                <select
-                  value={properties.lengthAdjust}
-                  onChange={(event) =>
-                    onChange({ lengthAdjust: event.target.value }, 'Alterar largura do texto')
-                  }
-                >
-                  <option value="spacing">Espaçamento</option>
-                  <option value="spacingAndGlyphs">Espaçamento e glifos</option>
-                </select>
-              </label>
+            <label className="svg-editor-inline-field">
+              <span>Tracejado</span>
+              <select
+                value={properties?.strokeDasharray ?? ''}
+                disabled={!properties}
+                onChange={(event) =>
+                  onChange({ 'stroke-dasharray': event.target.value || null }, 'Alterar tracejado')
+                }
+              >
+                <option value="">Sólido</option>
+                <option value="4 4">Pontilhado</option>
+                <option value="8 4">Traçado</option>
+                <option value="12 4 4 4">Traço-ponto</option>
+              </select>
+            </label>
+          </Panel>
+
+          <Panel title="Transformar">
+            <div className="svg-editor-transform-grid">
+              {(['x', 'y', 'width', 'height'] as const).map((key) => (
+                <label key={key}>
+                  <span>{{ x: 'X', y: 'Y', width: 'L', height: 'A' }[key]}</span>
+                  <input
+                    type="number"
+                    value={bounds[key]}
+                    disabled={!supportsBounds || properties?.[key] === null}
+                    onChange={(event) => setBound(key, Number(event.target.value))}
+                  />
+                </label>
+              ))}
+            </div>
+            <label className="svg-editor-inline-field">
+              <span>Opacidade</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={Math.round((properties?.opacity ?? 1) * 100)}
+                disabled={!properties}
+                onChange={(event) =>
+                  onChange({ opacity: Number(event.target.value) / 100 }, 'Alterar opacidade')
+                }
+              />
+            </label>
+            {properties?.tagName === 'text' && (
+              <>
+                <label className="svg-editor-stack-field">
+                  <span>Texto</span>
+                  <textarea
+                    value={properties.text}
+                    disabled={properties.structuredText}
+                    onChange={(event) => onTextChange(event.target.value)}
+                  />
+                  {properties.structuredText && (
+                    <small className="svg-editor-field-note">
+                      Texto estruturado com tspan/textPath: conteúdo protegido para preservar o
+                      layout.
+                    </small>
+                  )}
+                </label>
+                <label className="svg-editor-inline-field">
+                  <span>Tamanho da fonte</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.5"
+                    value={properties.fontSize}
+                    onChange={(event) =>
+                      onChange({ 'font-size': Number(event.target.value) }, 'Alterar tipografia')
+                    }
+                  />
+                </label>
+                <label className="svg-editor-inline-field">
+                  <span>Fonte</span>
+                  <input
+                    value={properties.fontFamily}
+                    onChange={(event) =>
+                      onChange({ 'font-family': event.target.value }, 'Alterar tipografia')
+                    }
+                  />
+                </label>
+                <label className="svg-editor-inline-field">
+                  <span>Peso</span>
+                  <input
+                    value={properties.fontWeight}
+                    onChange={(event) =>
+                      onChange({ 'font-weight': event.target.value }, 'Alterar tipografia')
+                    }
+                  />
+                </label>
+                <label className="svg-editor-inline-field">
+                  <span>Espaçamento</span>
+                  <input
+                    value={properties.letterSpacing}
+                    onChange={(event) =>
+                      onChange({ 'letter-spacing': event.target.value }, 'Alterar tipografia')
+                    }
+                  />
+                </label>
+                <label className="svg-editor-inline-field">
+                  <span>Alinhamento</span>
+                  <select
+                    value={properties.textAnchor}
+                    onChange={(event) =>
+                      onChange({ 'text-anchor': event.target.value }, 'Alterar tipografia')
+                    }
+                  >
+                    <option value="start">Início</option>
+                    <option value="middle">Centro</option>
+                    <option value="end">Fim</option>
+                  </select>
+                </label>
+                <label className="svg-editor-inline-field">
+                  <span>Largura do texto</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="Automática"
+                    value={properties.textLength ?? ''}
+                    onChange={(event) =>
+                      onChange(
+                        { textLength: event.target.value ? Number(event.target.value) : null },
+                        'Alterar largura do texto',
+                      )
+                    }
+                  />
+                </label>
+                {properties.textLength !== null && (
+                  <label className="svg-editor-inline-field">
+                    <span>Ajuste da largura</span>
+                    <select
+                      value={properties.lengthAdjust}
+                      onChange={(event) =>
+                        onChange({ lengthAdjust: event.target.value }, 'Alterar largura do texto')
+                      }
+                    >
+                      <option value="spacing">Espaçamento</option>
+                      <option value="spacingAndGlyphs">Espaçamento e glifos</option>
+                    </select>
+                  </label>
+                )}
+              </>
             )}
-          </>
-        )}
-      </Panel>
+          </Panel>
+        </>
+      )}
 
       {properties && (
         <Panel title="Slot do modelo">
@@ -537,9 +559,12 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
         <button
           type="button"
           className="svg-editor-upload-zone"
+          disabled={isImporting}
           onClick={() => uploadRef.current?.click()}
         >
-          ↑<span>Selecione o SVG junto com imagens e fontes vinculadas</span>
+          <strong>{isImporting ? 'Importando…' : 'Selecionar arquivos'}</strong>
+          <span>SVG + imagens e fontes vinculadas</span>
+          <small>Também é possível arrastar tudo para o canvas</small>
         </button>
         <input
           ref={uploadRef}
