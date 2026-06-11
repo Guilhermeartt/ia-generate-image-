@@ -371,6 +371,43 @@
         color: var(--text-3);
         cursor: pointer;
       }
+      /* Botão com rótulo de texto (largura flexível) — distinto do mini-button quadrado. */
+      .svg-editor-text-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        height: 28px;
+        padding: 0 10px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--surface);
+        color: var(--text-2, var(--text-3));
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: border-color .12s ease, background .12s ease, color .12s ease;
+      }
+      .svg-editor-text-button:hover:not(:disabled) {
+        border-color: var(--indigo);
+        color: var(--text-1);
+      }
+      .svg-editor-text-button:disabled { opacity: .5; cursor: not-allowed; }
+      .svg-editor-text-button.wide { width: 100%; margin-top: 7px; }
+      .svg-editor-text-button.active {
+        background: var(--indigo);
+        border-color: var(--indigo);
+        color: #fff;
+      }
+      .svg-editor-button-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 7px;
+      }
+      .svg-editor-button-row .svg-editor-text-button { flex: 1; padding: 0 6px; }
       .svg-editor-swatches {
         display: grid;
         grid-template-columns: repeat(8, 1fr);

@@ -249,14 +249,13 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
           <p className="svg-editor-muted">
             Marque este espaço como imagem, texto ou ícone — o modelo preenche na cena.
           </p>
-          <div className="svg-editor-color-row">
+          <div className="svg-editor-button-row">
             {(['image', 'text', 'icon'] as const).map((type) => (
               <button
                 key={type}
                 type="button"
-                className="svg-editor-mini-button"
+                className={`svg-editor-text-button${slot?.type === type ? ' active' : ''}`}
                 aria-pressed={slot?.type === type}
-                style={slot?.type === type ? { background: '#7f77dd', color: '#fff' } : undefined}
                 onClick={() => onMarkSlot(type)}
               >
                 {SLOT_LABELS[type]}
@@ -274,7 +273,7 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
                   aria-label="Nome do slot"
                 />
               </label>
-              <button type="button" className="svg-editor-mini-button wide" onClick={onUnmarkSlot}>
+              <button type="button" className="svg-editor-text-button wide" onClick={onUnmarkSlot}>
                 Remover marcação de slot
               </button>
               <SlotAnimationEditor animation={slot.animation} onChange={onAnimationChange} />
@@ -301,10 +300,9 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
         </div>
         <button
           type="button"
-          className="svg-editor-mini-button wide"
+          className={`svg-editor-text-button wide${previewMode ? ' active' : ''}`}
           disabled={slots.length === 0}
           aria-pressed={previewMode}
-          style={previewMode ? { background: '#7f77dd', color: '#fff' } : undefined}
           onClick={onTogglePreview}
         >
           {previewMode ? 'Voltar a editar' : 'Pré-visualizar preenchido'}

@@ -99,7 +99,7 @@ const SvgTemplateLibrary: React.FC<SvgTemplateLibraryProps> = ({
       <h3>Biblioteca de modelos</h3>
       <button
         type="button"
-        className="svg-editor-mini-button wide"
+        className="svg-editor-text-button wide"
         disabled={busy}
         onClick={() => void handleSave()}
       >
@@ -108,7 +108,7 @@ const SvgTemplateLibrary: React.FC<SvgTemplateLibraryProps> = ({
       {currentTemplateId && (
         <button
           type="button"
-          className="svg-editor-mini-button wide"
+          className="svg-editor-text-button wide"
           disabled={busy}
           onClick={() => onCurrentTemplateChange(null)}
           title="Salvar a próxima alteração como um modelo novo"

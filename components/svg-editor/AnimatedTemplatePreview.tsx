@@ -63,7 +63,7 @@ const AnimatedTemplatePreview: React.FC<AnimatedTemplatePreviewProps> = ({
       {animatedSlots.length > 0 && (
         <button
           type="button"
-          className="svg-editor-mini-button"
+          className="svg-editor-text-button"
           onClick={() => setPlaying((value) => !value)}
           style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)' }}
         >
