@@ -527,6 +527,32 @@
         transition: transform .1s ease;
       }
       .svg-editor-swatches button:hover:not(:disabled) { transform: scale(1.18); }
+      .svg-editor-gradient { display: flex; flex-direction: column; gap: 7px; margin-top: 7px; }
+      .svg-editor-gradient-preview {
+        height: 28px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+      }
+      .svg-editor-gradient-stops { display: flex; flex-direction: column; gap: 6px; }
+      .svg-editor-gradient-stop { display: flex; align-items: center; gap: 6px; }
+      .svg-editor-gradient-stop input[type="color"] {
+        width: 30px;
+        height: 26px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: none;
+        cursor: pointer;
+      }
+      .svg-editor-gradient-offset {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        flex: 1;
+        font-size: 11px;
+        color: var(--text-4);
+      }
+      .svg-editor-gradient-offset input { width: 100%; }
       .svg-editor-inline-field {
         margin-top: 7px;
         display: flex;

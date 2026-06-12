@@ -1,4 +1,6 @@
 import type {
+  GradientSpec,
+  GradientStop,
   SvgElementProperties,
   SvgLayer,
   SlotType,
@@ -1056,4 +1058,150 @@ export const parseViewBox = (markup: string): { width: number; height: number } 
     // markup inválido — sem viewBox
   }
   return null;
+};
+
+// ── Degradês (gradientes lineares/radiais) ───────────────────────────────────
+// Os gradientes vivem no <defs> e são referenciados por fill="url(#id)". Usam
+// gradientUnits="objectBoundingBox" (coords 0..1) para funcionar em qualquer
+// tamanho de forma. O ângulo (linear) é mapeado para x1/y1/x2/y2.
+
+const GRADIENT_TAGS = new Set(['linearGradient', 'radialGradient']);
+
+const clampUnit = (value: number): number => Math.max(0, Math.min(1, value));
+
+const DEFAULT_GRADIENT_STOPS: GradientStop[] = [
+  { offset: 0, color: '#7f77dd', opacity: 1 },
+  { offset: 1, color: '#1d9e75', opacity: 1 },
+];
+
+/** Verdadeiro se o valor de fill/stroke aponta para um recurso por id (url(#…)). */
+export const isGradientFill = (value: string | null | undefined): boolean =>
+  !!value && /^url\(\s*#.+\)$/.test(value.trim());
+
+const gradientIdFromFill = (value: string): string | null =>
+  value.trim().match(/^url\(\s*#([^)\s]+)\s*\)$/)?.[1] ?? null;
+
+const parseOffset = (raw: string | null): number => {
+  if (!raw) return 0;
+  const trimmed = raw.trim();
+  if (trimmed.endsWith('%')) return clampUnit(Number.parseFloat(trimmed) / 100);
+  return clampUnit(Number.parseFloat(trimmed) || 0);
+};
+
+const coordsFromAngle = (
+  angleDeg: number,
+): { x1: number; y1: number; x2: number; y2: number } => {
+  const rad = (angleDeg * Math.PI) / 180;
+  const dx = Math.cos(rad) / 2;
+  const dy = Math.sin(rad) / 2;
+  return { x1: 0.5 - dx, y1: 0.5 - dy, x2: 0.5 + dx, y2: 0.5 + dy };
+};
+
+const angleFromGradient = (grad: Element): number => {
+  const x1 = numberAttribute(grad, 'x1');
+  const y1 = numberAttribute(grad, 'y1');
+  const x2 = grad.hasAttribute('x2') ? numberAttribute(grad, 'x2') : 1;
+  const y2 = numberAttribute(grad, 'y2');
+  return Math.round((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI);
+};
+
+const round3 = (value: number): string => String(Math.round(value * 1000) / 1000);
+
+/** Lê o degradê referenciado pelo fill de `id`, ou null se o fill não for um degradê. */
+export const readGradient = (markup: string, id: string): GradientSpec | null => {
+  const document = parseSvg(markup);
+  const element = document.getElementById(id);
+  if (!element) return null;
+  const fill = element.getAttribute('fill') || '';
+  const gradientId = isGradientFill(fill) ? gradientIdFromFill(fill) : null;
+  if (!gradientId) return null;
+  const grad = document.getElementById(gradientId);
+  if (!grad || !GRADIENT_TAGS.has(grad.localName)) return null;
+
+  const type = grad.localName === 'radialGradient' ? 'radial' : 'linear';
+  const stops: GradientStop[] = Array.from(grad.querySelectorAll('stop')).map((stop) => ({
+    offset: parseOffset(stop.getAttribute('offset')),
+    color: stop.getAttribute('stop-color') || '#000000',
+    opacity: clampUnit(Number.parseFloat(stop.getAttribute('stop-opacity') || '1')),
+  }));
+  return {
+    type,
+    stops: stops.length ? stops : DEFAULT_GRADIENT_STOPS.map((stop) => ({ ...stop })),
+    angle: type === 'linear' ? angleFromGradient(grad) : 0,
+  };
+};
+
+const ensureGradientDefs = (document: XMLDocument): Element => {
+  const existing = document.documentElement.querySelector(':scope > defs');
+  if (existing) return existing;
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  document.documentElement.insertBefore(defs, document.documentElement.firstChild);
+  return defs;
+};
+
+/**
+ * Aplica um degradê ao preenchimento de `id`: cria (ou atualiza, reusando o id se
+ * a forma já apontava para um) o <linearGradient>/<radialGradient> no <defs> e
+ * aponta o fill da forma para ele.
+ */
+export const applyGradientFill = (markup: string, id: string, spec: GradientSpec): string => {
+  const document = parseSvg(markup);
+  const element = document.getElementById(id);
+  if (!element) return markup;
+
+  const wantTag = spec.type === 'radial' ? 'radialGradient' : 'linearGradient';
+  const fill = element.getAttribute('fill') || '';
+  const existingId = isGradientFill(fill) ? gradientIdFromFill(fill) : null;
+  const existing = existingId ? document.getElementById(existingId) : null;
+
+  let gradientId: string;
+  let grad: Element;
+  if (existing && existingId && GRADIENT_TAGS.has(existing.localName)) {
+    gradientId = existingId;
+    if (existing.localName === wantTag) {
+      grad = existing;
+    } else {
+      // Troca de tipo (linear↔radial) mantendo o mesmo id.
+      grad = document.createElementNS(SVG_NS, wantTag);
+      grad.setAttribute('id', gradientId);
+      existing.replaceWith(grad);
+    }
+  } else {
+    gradientId = createSvgId('grad');
+    grad = document.createElementNS(SVG_NS, wantTag);
+    grad.setAttribute('id', gradientId);
+    ensureGradientDefs(document).appendChild(grad);
+  }
+
+  while (grad.firstChild) grad.removeChild(grad.firstChild);
+  for (const attribute of ['x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'fx', 'fy', 'fr']) {
+    grad.removeAttribute(attribute);
+  }
+  grad.setAttribute('gradientUnits', 'objectBoundingBox');
+
+  if (spec.type === 'linear') {
+    const coords = coordsFromAngle(spec.angle);
+    grad.setAttribute('x1', round3(coords.x1));
+    grad.setAttribute('y1', round3(coords.y1));
+    grad.setAttribute('x2', round3(coords.x2));
+    grad.setAttribute('y2', round3(coords.y2));
+  } else {
+    grad.setAttribute('cx', '0.5');
+    grad.setAttribute('cy', '0.5');
+    grad.setAttribute('r', '0.5');
+  }
+
+  const stops = (spec.stops.length >= 2 ? spec.stops : DEFAULT_GRADIENT_STOPS)
+    .map((stop) => ({ ...stop, offset: clampUnit(stop.offset) }))
+    .sort((left, right) => left.offset - right.offset);
+  for (const stop of stops) {
+    const stopElement = document.createElementNS(SVG_NS, 'stop');
+    stopElement.setAttribute('offset', round3(stop.offset));
+    stopElement.setAttribute('stop-color', stop.color);
+    if (stop.opacity < 1) stopElement.setAttribute('stop-opacity', round3(clampUnit(stop.opacity)));
+    grad.appendChild(stopElement);
+  }
+
+  element.setAttribute('fill', `url(#${gradientId})`);
+  return serialize(document);
 };

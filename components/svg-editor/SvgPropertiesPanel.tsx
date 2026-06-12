@@ -1,8 +1,10 @@
 import React, { useRef } from 'react';
 import SlotAnimationEditor from './SlotAnimationEditor';
-import { SVG_ASPECT_PRESETS, aspectLabelFor } from './svgDocument';
+import GradientEditor from './GradientEditor';
+import { SVG_ASPECT_PRESETS, aspectLabelFor, isGradientFill } from './svgDocument';
 import type { SlotAnimation } from './slotAnimation';
 import type {
+  GradientSpec,
   SlotType,
   SvgElementProperties,
   SvgLayer,
@@ -41,7 +43,19 @@ interface SvgPropertiesPanelProps {
   onUnmarkSlot: () => void;
   onRenameSlot: (name: string) => void;
   onAnimationChange: (animation: SlotAnimation | undefined) => void;
+  /** Degradê do preenchimento do elemento selecionado, ou null se for cor sólida. */
+  gradient: GradientSpec | null;
+  onGradientChange: (spec: GradientSpec) => void;
 }
+
+const SOLID_TO_GRADIENT = (color: string): GradientSpec => ({
+  type: 'linear',
+  angle: 90,
+  stops: [
+    { offset: 0, color: /^#[0-9a-f]{6}$/i.test(color) ? color : '#7f77dd', opacity: 1 },
+    { offset: 1, color: '#ffffff', opacity: 1 },
+  ],
+});
 
 const SLOT_LABELS: Record<SlotType, string> = {
   image: 'Imagem',
@@ -119,6 +133,8 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
   onUnmarkSlot,
   onRenameSlot,
   onAnimationChange,
+  gradient,
+  onGradientChange,
 }) => {
   const uploadRef = useRef<HTMLInputElement>(null);
   const bounds = {
@@ -131,6 +147,8 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
     !!properties && ['rect', 'ellipse', 'circle', 'line', 'text'].includes(properties.tagName);
   const setBound = (key: keyof typeof bounds, value: number) =>
     onBoundsChange({ ...bounds, [key]: value });
+  const isFillGradient = isGradientFill(properties?.fill);
+  const solidFromGradient = gradient?.stops?.[0]?.color ?? '#7f77dd';
 
   return (
     <aside className="svg-editor-properties">
@@ -207,47 +225,74 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
       {properties && (
         <>
           <Panel title="Preenchimento">
-            <div className="svg-editor-color-row">
-              <input
-                type="color"
-                value={normalizeColor(properties?.fill || '', '#7f77dd')}
-                disabled={!properties}
-                aria-label="Preenchimento"
-                onChange={(event) =>
-                  onChange({ fill: event.target.value }, 'Alterar preenchimento')
-                }
-              />
-              <input
-                className="svg-editor-small-input"
-                value={properties?.fill || 'none'}
-                disabled={!properties}
-                aria-label="Cor de preenchimento"
-                onChange={(event) =>
-                  onChange({ fill: event.target.value }, 'Alterar preenchimento')
-                }
-              />
+            <div className="svg-editor-button-row">
               <button
                 type="button"
-                className="svg-editor-mini-button"
-                disabled={!properties}
-                onClick={() => onChange({ fill: 'none' }, 'Remover preenchimento')}
-                title="Sem preenchimento"
+                className={`svg-editor-text-button${!isFillGradient ? ' active' : ''}`}
+                onClick={() => {
+                  if (isFillGradient) onChange({ fill: solidFromGradient }, 'Preenchimento sólido');
+                }}
               >
-                ∅
+                Sólido
+              </button>
+              <button
+                type="button"
+                className={`svg-editor-text-button${isFillGradient ? ' active' : ''}`}
+                onClick={() => {
+                  if (!isFillGradient) onGradientChange(SOLID_TO_GRADIENT(properties?.fill || ''));
+                }}
+              >
+                Degradê
               </button>
             </div>
-            <div className="svg-editor-swatches">
-              {SWATCHES.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  disabled={!properties}
-                  style={{ background: color }}
-                  title={color}
-                  onClick={() => onChange({ fill: color }, 'Alterar preenchimento')}
-                />
-              ))}
-            </div>
+
+            {isFillGradient && gradient ? (
+              <GradientEditor spec={gradient} onChange={onGradientChange} />
+            ) : (
+              <>
+                <div className="svg-editor-color-row">
+                  <input
+                    type="color"
+                    value={normalizeColor(properties?.fill || '', '#7f77dd')}
+                    disabled={!properties}
+                    aria-label="Preenchimento"
+                    onChange={(event) =>
+                      onChange({ fill: event.target.value }, 'Alterar preenchimento')
+                    }
+                  />
+                  <input
+                    className="svg-editor-small-input"
+                    value={properties?.fill || 'none'}
+                    disabled={!properties}
+                    aria-label="Cor de preenchimento"
+                    onChange={(event) =>
+                      onChange({ fill: event.target.value }, 'Alterar preenchimento')
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="svg-editor-mini-button"
+                    disabled={!properties}
+                    onClick={() => onChange({ fill: 'none' }, 'Remover preenchimento')}
+                    title="Sem preenchimento"
+                  >
+                    ∅
+                  </button>
+                </div>
+                <div className="svg-editor-swatches">
+                  {SWATCHES.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      disabled={!properties}
+                      style={{ background: color }}
+                      title={color}
+                      onClick={() => onChange({ fill: color }, 'Alterar preenchimento')}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </Panel>
 
           <Panel title="Contorno">

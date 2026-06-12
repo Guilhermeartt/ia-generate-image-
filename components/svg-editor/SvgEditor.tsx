@@ -7,8 +7,9 @@ import AnimatedTemplatePreview from './AnimatedTemplatePreview';
 import { buildPreviewContents } from './templateBinding';
 import { prepareSvgImport } from './svgImport';
 import type { SlotAnimation } from './slotAnimation';
-import type { SlotType, SvgCamera, SvgEditorDocument, SvgTool } from './types';
+import type { GradientSpec, SlotType, SvgCamera, SvgEditorDocument, SvgTool } from './types';
 import {
+  applyGradientFill,
   createBlankSvg,
   duplicateSvgElement,
   getSlotMeta,
@@ -17,6 +18,7 @@ import {
   listSvgLayers,
   markSlot,
   parseViewBox,
+  readGradient,
   removeSvgElement,
   reorderSvgElement,
   resizeSvgElement,
@@ -87,6 +89,10 @@ const SvgEditor: React.FC = () => {
     () => (selectedId ? getSlotMeta(documentState.markup, selectedId) : null),
     [documentState.markup, selectedId],
   );
+  const gradient = useMemo(
+    () => (selectedId ? readGradient(documentState.markup, selectedId) : null),
+    [documentState.markup, selectedId],
+  );
 
   const commit = useCallback(
     (before: string, after: string, label: string, nextSelectedId?: string) => {
@@ -135,6 +141,14 @@ const SvgEditor: React.FC = () => {
       applyChange(setViewBox(documentState.markup, width, height), 'Proporção do quadro');
     },
     [applyChange, documentState.markup],
+  );
+
+  const applyGradientToSelected = useCallback(
+    (spec: GradientSpec) => {
+      if (!selectedId) return;
+      applyChange(applyGradientFill(documentState.markup, selectedId, spec), 'Editar degradê', selectedId);
+    },
+    [applyChange, documentState.markup, selectedId],
   );
 
   const renameSelectedSlot = useCallback(
@@ -476,6 +490,8 @@ const SvgEditor: React.FC = () => {
           onUnmarkSlot={unmarkSelectedSlot}
           onRenameSlot={renameSelectedSlot}
           onAnimationChange={setSelectedSlotAnimation}
+          gradient={gradient}
+          onGradientChange={applyGradientToSelected}
           libraryNode={
             <SvgTemplateLibrary
               documentName={documentState.name}

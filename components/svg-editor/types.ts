@@ -54,6 +54,24 @@ export interface SvgCamera {
   zoom: number;
 }
 
+/** Parada de cor de um degradê. */
+export interface GradientStop {
+  /** Posição 0..1 ao longo do degradê. */
+  offset: number;
+  /** Cor #rrggbb. */
+  color: string;
+  /** Opacidade 0..1. */
+  opacity: number;
+}
+
+/** Especificação de um degradê (linear ou radial) aplicado ao preenchimento. */
+export interface GradientSpec {
+  type: 'linear' | 'radial';
+  stops: GradientStop[];
+  /** Ângulo em graus (só linear): 0 = →, 90 = ↓. */
+  angle: number;
+}
+
 /** Papel funcional de um espaço parametrizável dentro de um modelo de cena. */
 export type SlotType = 'image' | 'text' | 'icon';
 

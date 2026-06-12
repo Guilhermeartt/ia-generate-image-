@@ -2,9 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendSvgElement,
+  applyGradientFill,
   createBlankSvg,
   duplicateSvgElement,
   getSlotMeta,
+  isGradientFill,
+  readGradient,
   getSvgElementProperties,
   listSlots,
   listSvgLayers,
@@ -405,5 +408,72 @@ describe('sanitizeSvg — import fiel e seguro', () => {
     expect(result).not.toContain('onload');
     expect(result).not.toContain('onclick');
     expect(result).not.toContain('behavior');
+  });
+});
+
+describe('degradês (gradientes)', () => {
+  const linearSpec = {
+    type: 'linear' as const,
+    angle: 90,
+    stops: [
+      { offset: 0, color: '#ff0000', opacity: 1 },
+      { offset: 1, color: '#0000ff', opacity: 0.5 },
+    ],
+  };
+
+  it('isGradientFill distingue url(#id) de cor sólida', () => {
+    expect(isGradientFill('url(#g)')).toBe(true);
+    expect(isGradientFill('#ff0000')).toBe(false);
+    expect(isGradientFill('none')).toBe(false);
+  });
+
+  it('aplica um degradê linear e o lê de volta (round-trip)', () => {
+    const { markup, id } = appendSvgElement(createBlankSvg(), 'rect', {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    });
+    const withGradient = applyGradientFill(markup, id, linearSpec);
+
+    expect(getSvgElementProperties(withGradient, id)?.fill).toMatch(/^url\(#grad-/);
+    expect(withGradient).toContain('<linearGradient');
+    expect(withGradient).toContain('stop-color="#ff0000"');
+    expect(withGradient).toContain('stop-opacity');
+
+    const read = readGradient(withGradient, id);
+    expect(read?.type).toBe('linear');
+    expect(read?.angle).toBe(90);
+    expect(read?.stops).toHaveLength(2);
+    expect(read?.stops[0]).toMatchObject({ offset: 0, color: '#ff0000' });
+    expect(read?.stops[1].opacity).toBeCloseTo(0.5);
+  });
+
+  it('troca linear→radial reutilizando o mesmo id de gradiente', () => {
+    const { markup, id } = appendSvgElement(createBlankSvg(), 'rect', {
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+    });
+    const linear = applyGradientFill(markup, id, linearSpec);
+    const gradId = getSvgElementProperties(linear, id)?.fill;
+
+    const radial = applyGradientFill(linear, id, { ...linearSpec, type: 'radial' });
+    expect(getSvgElementProperties(radial, id)?.fill).toBe(gradId);
+    expect(radial).toContain('<radialGradient');
+    expect(radial).not.toContain('<linearGradient');
+    expect(readGradient(radial, id)?.type).toBe('radial');
+  });
+
+  it('readGradient devolve null para preenchimento sólido', () => {
+    const { markup, id } = appendSvgElement(createBlankSvg(), 'rect', {
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      fill: '#123456',
+    });
+    expect(readGradient(markup, id)).toBeNull();
   });
 });
