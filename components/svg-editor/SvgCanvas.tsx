@@ -71,6 +71,70 @@ const trianglePath = (start: Point, point: Point): string => {
   return `M ${minX + width / 2} ${minY} L ${minX + width} ${minY + height} L ${minX} ${minY + height} Z`;
 };
 
+/**
+ * Aplica uma geometria padrão a uma forma recém-criada quando o usuário só
+ * clicou (ou arrastou de menos). O tamanho é proporcional ao quadro e o centro
+ * é "grudado" dentro da área visível, então um clique em qualquer lugar — até
+ * nas zonas mortas fora do quadro — gera uma forma visível e dentro dele.
+ */
+const applyDefaultShape = (
+  element: SVGGraphicsElement,
+  kind: Gesture['kind'],
+  center: Point,
+  dims: { width: number; height: number },
+): boolean => {
+  const W = dims.width;
+  const H = dims.height;
+  const fit = (value: number, min: number, max: number) =>
+    min >= max ? (min + max) / 2 : Math.min(Math.max(value, min), max);
+
+  if (kind === 'rect') {
+    const w = W * 0.22;
+    const h = H * 0.22;
+    const cx = fit(center.x, w / 2, W - w / 2);
+    const cy = fit(center.y, h / 2, H - h / 2);
+    element.setAttribute('x', String(cx - w / 2));
+    element.setAttribute('y', String(cy - h / 2));
+    element.setAttribute('width', String(w));
+    element.setAttribute('height', String(h));
+  } else if (kind === 'ellipse') {
+    const rx = W * 0.11;
+    const ry = H * 0.11;
+    element.setAttribute('cx', String(fit(center.x, rx, W - rx)));
+    element.setAttribute('cy', String(fit(center.y, ry, H - ry)));
+    element.setAttribute('rx', String(rx));
+    element.setAttribute('ry', String(ry));
+  } else if (kind === 'line') {
+    const half = W * 0.13;
+    const cx = fit(center.x, half, W - half);
+    const cy = fit(center.y, 0, H);
+    element.setAttribute('x1', String(cx - half));
+    element.setAttribute('y1', String(cy));
+    element.setAttribute('x2', String(cx + half));
+    element.setAttribute('y2', String(cy));
+  } else if (kind === 'star') {
+    const radius = Math.min(W, H) * 0.13;
+    element.setAttribute(
+      'd',
+      starPath({ x: fit(center.x, radius, W - radius), y: fit(center.y, radius, H - radius) }, radius),
+    );
+  } else if (kind === 'triangle') {
+    const halfW = W * 0.11;
+    const halfH = H * 0.13;
+    const cx = fit(center.x, halfW, W - halfW);
+    const cy = fit(center.y, halfH, H - halfH);
+    element.setAttribute(
+      'd',
+      trianglePath({ x: cx - halfW, y: cy - halfH }, { x: cx + halfW, y: cy + halfH }),
+    );
+  } else {
+    // freehand: clique único não desenha nada.
+    element.remove();
+    return false;
+  }
+  return true;
+};
+
 const matrixString = (matrix: DOMMatrix): string =>
   `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`;
 
@@ -109,7 +173,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   const dimensions = viewBox ?? { width: 1280, height: 720 };
   const fitScale = Math.max(
     0.01,
-    Math.min((viewport.width - 96) / dimensions.width, (viewport.height - 96) / dimensions.height),
+    Math.min((viewport.width - 40) / dimensions.width, (viewport.height - 40) / dimensions.height),
   );
   const renderedScale = fitScale * camera.zoom;
 
@@ -465,6 +529,23 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+
+    // Clique (ou arrasto mínimo) numa ferramenta de forma: em vez de uma forma
+    // de 1px invisível, cria uma forma de tamanho padrão dentro do quadro.
+    const CREATION_KINDS = new Set(['rect', 'ellipse', 'line', 'freehand', 'star', 'triangle']);
+    if (CREATION_KINDS.has(gesture.kind)) {
+      const end = toSvgPoint(event.clientX, event.clientY);
+      const dragDistance = end
+        ? Math.hypot(end.x - gesture.start.x, end.y - gesture.start.y)
+        : 0;
+      if (dragDistance < Math.min(dimensions.width, dimensions.height) * 0.015) {
+        const element = hostRef.current?.querySelector<SVGGraphicsElement>(
+          `#${CSS.escape(gesture.id)}`,
+        );
+        if (element) applyDefaultShape(element, gesture.kind, gesture.start, dimensions);
+      }
+    }
+
     const after = serializeCanvas();
     if (!after || after === gesture.before) return;
     const label =
