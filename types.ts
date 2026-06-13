@@ -430,6 +430,9 @@ export interface SceneTemplateAnimation {
   endSeconds?: number;
   enterDurationSeconds?: number;
   exitDurationSeconds?: number;
+  /** Movimento contínuo de câmera aplicado a slots e elementos de imagem. */
+  kenBurns?: VideoKenBurnsConfig;
+  kenBurnsDurationSeconds?: number;
 }
 
 export interface SceneTemplateSlotOverride {

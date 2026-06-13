@@ -52,6 +52,30 @@ describe('slotStyleAtTime', () => {
   it('ao fim da saída volta a ficar invisível', () => {
     expect(slotStyleAtTime(animation, 5).opacity).toBe(0);
   });
+
+  it('aplica Ken Burns progressivo sem remover a animação de entrada', () => {
+    const style = slotStyleAtTime({
+      enter: 'fade',
+      exit: 'none',
+      kenBurns: { direction: 'zoom-in', intensity: 0.2 },
+      kenBurnsDurationSeconds: 4,
+    }, 2);
+
+    expect(style.opacity).toBe(1);
+    expect(style.transform).toContain('scale(1.1)');
+  });
+
+  it('limita a intensidade do Ken Burns e suporta movimento panorâmico', () => {
+    const style = slotStyleAtTime({
+      enter: 'none',
+      exit: 'none',
+      kenBurns: { direction: 'pan-left', intensity: 0.8 },
+      kenBurnsDurationSeconds: 2,
+    }, 2);
+
+    expect(style.transform).toContain('scale(1.4)');
+    expect(style.transform).toContain('translateX(-20%)');
+  });
 });
 
 describe('previewDurationSeconds', () => {
@@ -60,5 +84,14 @@ describe('previewDurationSeconds', () => {
     expect(
       previewDurationSeconds([{ enter: 'fade', exit: 'fade', endSeconds: 5 }]),
     ).toBeGreaterThan(5);
+  });
+
+  it('inclui a duração do Ken Burns no preview', () => {
+    expect(previewDurationSeconds([{
+      enter: 'none',
+      exit: 'none',
+      kenBurns: { direction: 'zoom-in', intensity: 0.1 },
+      kenBurnsDurationSeconds: 8,
+    }])).toBe(8);
   });
 });

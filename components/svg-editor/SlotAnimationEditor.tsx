@@ -1,10 +1,15 @@
 import React from 'react';
-import type { VideoLetteringEnterAnimation, VideoLetteringExitAnimation } from '../../types';
+import type {
+  VideoKenBurnsDirection,
+  VideoLetteringEnterAnimation,
+  VideoLetteringExitAnimation,
+} from '../../types';
 import type { SlotAnimation } from './slotAnimation';
 
 interface SlotAnimationEditorProps {
   animation: SlotAnimation | undefined;
   onChange: (animation: SlotAnimation | undefined) => void;
+  allowKenBurns?: boolean;
 }
 
 const ENTER_OPTIONS: { value: VideoLetteringEnterAnimation; label: string }[] = [
@@ -39,13 +44,27 @@ const DEFAULT_ANIMATION: SlotAnimation = {
   exitDurationSeconds: 0.5,
 };
 
+const KEN_BURNS_OPTIONS: { value: VideoKenBurnsDirection; label: string }[] = [
+  { value: 'none', label: 'Desativado' },
+  { value: 'zoom-in', label: 'Aproximar' },
+  { value: 'zoom-out', label: 'Afastar' },
+  { value: 'pan-left', label: 'Mover para esquerda' },
+  { value: 'pan-right', label: 'Mover para direita' },
+  { value: 'pan-up', label: 'Mover para cima' },
+  { value: 'pan-down', label: 'Mover para baixo' },
+];
+
 const numberOrUndefined = (raw: string): number | undefined => {
   if (raw.trim() === '') return undefined;
   const value = Number(raw);
   return Number.isFinite(value) ? value : undefined;
 };
 
-const SlotAnimationEditor: React.FC<SlotAnimationEditorProps> = ({ animation, onChange }) => {
+const SlotAnimationEditor: React.FC<SlotAnimationEditorProps> = ({
+  animation,
+  onChange,
+  allowKenBurns = false,
+}) => {
   const patch = (changes: Partial<SlotAnimation>) =>
     onChange({ ...(animation ?? DEFAULT_ANIMATION), ...changes });
 
@@ -141,6 +160,68 @@ const SlotAnimationEditor: React.FC<SlotAnimationEditorProps> = ({ animation, on
               />
             </label>
           </div>
+
+          {allowKenBurns && (
+            <div className="svg-editor-ken-burns">
+              <strong>Ken Burns</strong>
+              <label className="svg-editor-inline-field">
+                <span>Movimento</span>
+                <select
+                  aria-label="Movimento Ken Burns"
+                  value={animation.kenBurns?.direction ?? 'none'}
+                  onChange={(event) => {
+                    const direction = event.target.value as VideoKenBurnsDirection;
+                    patch({
+                      kenBurns: direction === 'none'
+                        ? undefined
+                        : {
+                            direction,
+                            intensity: animation.kenBurns?.intensity ?? 0.12,
+                          },
+                    });
+                  }}
+                >
+                  {KEN_BURNS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              {animation.kenBurns && animation.kenBurns.direction !== 'none' && (
+                <div className="svg-editor-transform-grid">
+                  <label>
+                    <span>Intensidade</span>
+                    <input
+                      aria-label="Intensidade Ken Burns"
+                      type="number"
+                      min="0.01"
+                      max="0.4"
+                      step="0.01"
+                      value={animation.kenBurns.intensity}
+                      onChange={(event) => patch({
+                        kenBurns: {
+                          ...animation.kenBurns!,
+                          intensity: Math.max(0.01, Math.min(0.4, Number(event.target.value) || 0.01)),
+                        },
+                      })}
+                    />
+                  </label>
+                  <label>
+                    <span>Duração (s)</span>
+                    <input
+                      aria-label="Duração Ken Burns"
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={animation.kenBurnsDurationSeconds ?? 5}
+                      onChange={(event) => patch({
+                        kenBurnsDurationSeconds: numberOrUndefined(event.target.value),
+                      })}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

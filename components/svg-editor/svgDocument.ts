@@ -993,6 +993,16 @@ const defaultSlotName = (type: SlotType): string =>
 const numberOrUndefined = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
+const parseKenBurns = (raw: unknown): SlotAnimation['kenBurns'] => {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const data = raw as Record<string, unknown>;
+  if (typeof data.direction !== 'string' || typeof data.intensity !== 'number') return undefined;
+  return {
+    direction: data.direction as NonNullable<SlotAnimation['kenBurns']>['direction'],
+    intensity: data.intensity,
+  };
+};
+
 const parseAnimation = (raw: unknown): SlotAnimation | undefined => {
   if (!raw || typeof raw !== 'object') return undefined;
   const data = raw as Record<string, unknown>;
@@ -1004,6 +1014,8 @@ const parseAnimation = (raw: unknown): SlotAnimation | undefined => {
     endSeconds: numberOrUndefined(data.endSeconds),
     enterDurationSeconds: numberOrUndefined(data.enterDurationSeconds),
     exitDurationSeconds: numberOrUndefined(data.exitDurationSeconds),
+    kenBurns: parseKenBurns(data.kenBurns),
+    kenBurnsDurationSeconds: numberOrUndefined(data.kenBurnsDurationSeconds),
   };
 };
 

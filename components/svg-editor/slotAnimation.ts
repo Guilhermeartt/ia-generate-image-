@@ -5,7 +5,11 @@
 // ({ opacity, transform, filter }). Reutilizável no preview do editor, no card
 // estático (frame assentado) e, futuramente, na composição Remotion.
 
-import type { VideoLetteringEnterAnimation, VideoLetteringExitAnimation } from '../../types';
+import type {
+  VideoKenBurnsConfig,
+  VideoLetteringEnterAnimation,
+  VideoLetteringExitAnimation,
+} from '../../types';
 
 export interface SlotAnimation {
   enter: VideoLetteringEnterAnimation;
@@ -16,6 +20,8 @@ export interface SlotAnimation {
   endSeconds?: number;
   enterDurationSeconds?: number;
   exitDurationSeconds?: number;
+  kenBurns?: VideoKenBurnsConfig;
+  kenBurnsDurationSeconds?: number;
 }
 
 export interface EnterExitStyle {
@@ -50,6 +56,31 @@ const easeOutBounce = (t: number): number => {
   }
   const x = t - 2.625 / d1;
   return n1 * x * x + 0.984375;
+};
+
+const kenBurnsTransform = (
+  config: VideoKenBurnsConfig | undefined,
+  progress: number,
+): string | undefined => {
+  if (!config || config.direction === 'none') return undefined;
+  const intensity = Math.max(0, Math.min(0.4, config.intensity));
+  const eased = clamp01(progress);
+  switch (config.direction) {
+    case 'zoom-in':
+      return `scale(${1 + intensity * eased})`;
+    case 'zoom-out':
+      return `scale(${1 + intensity - intensity * eased})`;
+    case 'pan-left':
+      return `scale(${1 + intensity}) translateX(${lerp(intensity * 50, -intensity * 50, eased)}%)`;
+    case 'pan-right':
+      return `scale(${1 + intensity}) translateX(${lerp(-intensity * 50, intensity * 50, eased)}%)`;
+    case 'pan-up':
+      return `scale(${1 + intensity}) translateY(${lerp(intensity * 50, -intensity * 50, eased)}%)`;
+    case 'pan-down':
+      return `scale(${1 + intensity}) translateY(${lerp(-intensity * 50, intensity * 50, eased)}%)`;
+    default:
+      return undefined;
+  }
 };
 
 /**
@@ -118,7 +149,14 @@ export const slotStyleAtTime = (animation: SlotAnimation, t: number): EnterExitS
       ? 0
       : clamp01((t - (animation.endSeconds - exitDuration)) / exitDuration);
 
-  return enterExitStyle(animation.enter, animation.exit, enterProgress, exitProgress);
+  const style = enterExitStyle(animation.enter, animation.exit, enterProgress, exitProgress);
+  const kenBurnsDuration = Math.max(0.1, animation.kenBurnsDurationSeconds ?? 5);
+  const kenBurnsProgress = clamp01((t - start) / kenBurnsDuration);
+  const kenBurns = kenBurnsTransform(animation.kenBurns, kenBurnsProgress);
+  return {
+    ...style,
+    transform: [style.transform, kenBurns].filter(Boolean).join(' ') || undefined,
+  };
 };
 
 /** Duração total sugerida para uma timeline de preview, dado o conjunto de animações. */
@@ -128,7 +166,14 @@ export const previewDurationSeconds = (animations: SlotAnimation[]): number => {
     const start = animation.startSeconds ?? 0;
     const enterDuration = animation.enterDurationSeconds ?? DEFAULT_ENTER_SECONDS;
     const settled = start + enterDuration + 1.2;
-    max = Math.max(max, animation.endSeconds != null ? animation.endSeconds + 0.6 : settled);
+    const kenBurnsEnd = animation.kenBurns
+      ? start + (animation.kenBurnsDurationSeconds ?? 5)
+      : 0;
+    max = Math.max(
+      max,
+      animation.endSeconds != null ? animation.endSeconds + 0.6 : settled,
+      kenBurnsEnd,
+    );
   }
   return max;
 };

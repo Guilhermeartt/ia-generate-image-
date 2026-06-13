@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Scene,
+  SceneTemplateAnimation,
   SceneTemplateElement,
   SceneTemplateElementType,
   SceneTemplateSlotOverride,
@@ -9,6 +10,11 @@ import type { TemplateSlot } from '../svg-editor/types';
 import { getSvgElementProperties, parseViewBox } from '../svg-editor/svgDocument';
 import { buildSceneSlotStyles, resolveSlotContents } from '../svg-editor/templateBinding';
 import { renderTemplate } from '../svg-editor/templateRender';
+import {
+  previewDurationSeconds,
+  slotStyleAtTime,
+  type EnterExitStyle,
+} from '../svg-editor/slotAnimation';
 import TemplateRenderer from '../svg-editor/TemplateRenderer';
 import SlotAnimationEditor from '../svg-editor/SlotAnimationEditor';
 
@@ -166,13 +172,19 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   onElementsChange,
 }) => {
   const dimensions = parseViewBox(markup) ?? { width: 1280, height: 720 };
-  const elements = scene.templateElements ?? [];
+  const elements = useMemo(() => scene.templateElements ?? [], [scene.templateElements]);
   const [selectedKey, setSelectedKey] = useState(
     slots[0] ? `slot:${slots[0].id}` : elements[0] ? `element:${elements[0].id}` : '',
   );
   const [layerQuery, setLayerQuery] = useState('');
   const [canvasZoom, setCanvasZoom] = useState(100);
   const [actionMessage, setActionMessage] = useState('Pronto para editar');
+  const [showGuides, setShowGuides] = useState(true);
+  const [guideMode, setGuideMode] = useState<'center' | 'thirds' | 'grid'>('thirds');
+  const [safeAreaMode, setSafeAreaMode] = useState<'off' | 'action' | 'title' | 'both'>('off');
+  const [animationPlaying, setAnimationPlaying] = useState(true);
+  const [animationTime, setAnimationTime] = useState(0);
+  const animationTimeRef = useRef(0);
   const dragRef = useRef<{
     key: string;
     startClientX: number;
@@ -200,9 +212,52 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     () => resolveSlotContents(slots, scene, scene.templateOverrides),
     [slots, scene],
   );
+  const activeAnimations = useMemo(
+    () => [
+      ...slots.map((slot) => {
+        const animation = scene.templateOverrides?.[slot.id]?.animation;
+        return animation === null ? undefined : animation ?? slot.animation;
+      }),
+      ...elements.map((element) => element.animation ?? undefined),
+    ].filter((animation): animation is SceneTemplateAnimation => Boolean(animation)),
+    [slots, scene.templateOverrides, elements],
+  );
+  const animationDuration = useMemo(
+    () => previewDurationSeconds(activeAnimations),
+    [activeAnimations],
+  );
+  useEffect(() => {
+    if (!animationPlaying || activeAnimations.length === 0) return;
+    let frame = 0;
+    const startedAt = performance.now() - animationTimeRef.current * 1000;
+    const tick = (now: number) => {
+      const nextTime = ((now - startedAt) / 1000) % animationDuration;
+      animationTimeRef.current = nextTime;
+      setAnimationTime(nextTime);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [animationPlaying, activeAnimations.length, animationDuration]);
+  const animatedSlotStyles = useMemo(() => {
+    const result: Record<string, EnterExitStyle> = {};
+    for (const slot of slots) {
+      const overrideAnimation = scene.templateOverrides?.[slot.id]?.animation;
+      const animation = overrideAnimation === null ? undefined : overrideAnimation ?? slot.animation;
+      if (animation) result[slot.id] = slotStyleAtTime(animation, animationTime);
+    }
+    return result;
+  }, [slots, scene.templateOverrides, animationTime]);
+  const additionalStyleById = useMemo(() => {
+    const result: Record<string, EnterExitStyle> = {};
+    for (const element of elements) {
+      if (element.animation) result[element.id] = slotStyleAtTime(element.animation, animationTime);
+    }
+    return result;
+  }, [elements, animationTime]);
   const styleById = useMemo(
-    () => buildSceneSlotStyles(slots, scene.templateOverrides),
-    [slots, scene.templateOverrides],
+    () => buildSceneSlotStyles(slots, scene.templateOverrides, animatedSlotStyles),
+    [slots, scene.templateOverrides, animatedSlotStyles],
   );
 
   const patchSlot = (changes: Partial<SceneTemplateSlotOverride>) => {
@@ -419,6 +474,54 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
       || element.name.toLocaleLowerCase('pt-BR').includes(normalizedLayerQuery)
       || element.type.toLocaleLowerCase('pt-BR').includes(normalizedLayerQuery)
     ));
+  const alignSelection = (
+    horizontal?: 'left' | 'center' | 'right',
+    vertical?: 'top' | 'middle' | 'bottom',
+  ) => {
+    if (selectedElement) {
+      const x = horizontal === 'left'
+        ? 0
+        : horizontal === 'center'
+          ? (dimensions.width - selectedElement.width) / 2
+          : horizontal === 'right'
+            ? dimensions.width - selectedElement.width
+            : selectedElement.x;
+      const y = vertical === 'top'
+        ? 0
+        : vertical === 'middle'
+          ? (dimensions.height - selectedElement.height) / 2
+          : vertical === 'bottom'
+            ? dimensions.height - selectedElement.height
+            : selectedElement.y;
+      patchElement({ x: Math.round(x), y: Math.round(y) });
+      setActionMessage(`${selectedElement.name} alinhado ao quadro`);
+      return;
+    }
+    if (selectedSlot) {
+      const scale = override.scale ?? 1;
+      const width = selectedSlot.bounds.width * scale;
+      const height = selectedSlot.bounds.height * scale;
+      const targetX = horizontal === 'left'
+        ? 0
+        : horizontal === 'center'
+          ? (dimensions.width - width) / 2
+          : horizontal === 'right'
+            ? dimensions.width - width
+            : selectedSlot.bounds.x + (override.translateX ?? 0);
+      const targetY = vertical === 'top'
+        ? 0
+        : vertical === 'middle'
+          ? (dimensions.height - height) / 2
+          : vertical === 'bottom'
+            ? dimensions.height - height
+            : selectedSlot.bounds.y + (override.translateY ?? 0);
+      patchSlot({
+        translateX: Math.round(targetX - selectedSlot.bounds.x),
+        translateY: Math.round(targetY - selectedSlot.bounds.y),
+      });
+      setActionMessage(`${selectedSlot.name} alinhado ao quadro`);
+    }
+  };
 
   const handlePreviewPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     const target = event.target as Element;
@@ -598,6 +701,42 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
             <div className="scene-template-canvas-toolbar" onPointerDown={(event) => event.stopPropagation()}>
               <span>{selectedSlot?.name ?? selectedElement?.name ?? 'Nenhum elemento selecionado'}</span>
               <div>
+                <button
+                  type="button"
+                  aria-pressed={showGuides}
+                  onClick={() => setShowGuides((visible) => !visible)}
+                >
+                  Guias
+                </button>
+                <select
+                  aria-label="Tipo de guia"
+                  value={guideMode}
+                  disabled={!showGuides}
+                  onChange={(event) => setGuideMode(event.target.value as typeof guideMode)}
+                >
+                  <option value="center">Centro</option>
+                  <option value="thirds">Terços</option>
+                  <option value="grid">Grade</option>
+                </select>
+                <select
+                  aria-label="Área segura de vídeo"
+                  value={safeAreaMode}
+                  onChange={(event) => setSafeAreaMode(event.target.value as typeof safeAreaMode)}
+                >
+                  <option value="off">Área segura: off</option>
+                  <option value="action">Ação 90%</option>
+                  <option value="title">Título 80%</option>
+                  <option value="both">Ação + título</option>
+                </select>
+                {activeAnimations.length > 0 && (
+                  <button
+                    type="button"
+                    aria-label={animationPlaying ? 'Pausar animações' : 'Reproduzir animações'}
+                    onClick={() => setAnimationPlaying((playing) => !playing)}
+                  >
+                    {animationPlaying ? 'Pausar' : 'Reproduzir'}
+                  </button>
+                )}
                 <button type="button" aria-label="Reduzir zoom" disabled={canvasZoom <= 50} onClick={() => setCanvasZoom((zoom) => Math.max(50, zoom - 25))}>-</button>
                 <output aria-label="Zoom do canvas">{canvasZoom}%</output>
                 <button type="button" aria-label="Aumentar zoom" disabled={canvasZoom >= 200} onClick={() => setCanvasZoom((zoom) => Math.min(200, zoom + 25))}>+</button>
@@ -614,9 +753,28 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                 options={{
                   styleById,
                   additionalElements: elements,
+                  additionalStyleById,
                 }}
                 className="scene-template-preview-document"
               />
+              {showGuides && (
+                <div className={`scene-template-guides guide-${guideMode}`} aria-hidden="true">
+                  <i className="guide-v guide-v-1" />
+                  <i className="guide-v guide-v-2" />
+                  <i className="guide-h guide-h-1" />
+                  <i className="guide-h guide-h-2" />
+                </div>
+              )}
+              {safeAreaMode !== 'off' && (
+                <div className="scene-template-safe-areas" aria-hidden="true">
+                  {(safeAreaMode === 'action' || safeAreaMode === 'both') && (
+                    <i className="safe-action"><span>Ação 90%</span></i>
+                  )}
+                  {(safeAreaMode === 'title' || safeAreaMode === 'both') && (
+                    <i className="safe-title"><span>Título 80%</span></i>
+                  )}
+                </div>
+              )}
             </div>
           </main>
 
@@ -811,6 +969,14 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
 
                 <div className="scene-template-section">
                   <strong>Posição e tamanho</strong>
+                  <div className="scene-template-align-tools" aria-label="Alinhar ao quadro">
+                    <button type="button" onClick={() => alignSelection('left')}>Esquerda</button>
+                    <button type="button" onClick={() => alignSelection('center')}>Centro H</button>
+                    <button type="button" onClick={() => alignSelection('right')}>Direita</button>
+                    <button type="button" onClick={() => alignSelection(undefined, 'top')}>Topo</button>
+                    <button type="button" onClick={() => alignSelection(undefined, 'middle')}>Centro V</button>
+                    <button type="button" onClick={() => alignSelection(undefined, 'bottom')}>Base</button>
+                  </div>
                   <div className="scene-template-grid">
                     {selectedElement ? (
                       <>
@@ -877,6 +1043,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                         : value.animation ?? selectedSlot?.animation
                     }
                     onChange={(animation) => patch({ animation: animation ?? null })}
+                    allowKenBurns={selectedType === 'image'}
                   />
                 </div>
               </>

@@ -236,6 +236,8 @@ describe('slots do modelo', () => {
       endSeconds: 4,
       enterDurationSeconds: 0.5,
       exitDurationSeconds: 0.4,
+      kenBurns: { direction: 'pan-left', intensity: 0.14 },
+      kenBurnsDurationSeconds: 6,
     } as const;
 
     const marked = markSlot(markup, id, { type: 'image', name: 'Capa', animation });
@@ -247,6 +249,8 @@ describe('slots do modelo', () => {
       enter: 'slide-up',
       exit: 'fade',
       endSeconds: 4,
+      kenBurns: { direction: 'pan-left', intensity: 0.14 },
+      kenBurnsDurationSeconds: 6,
     });
   });
 });

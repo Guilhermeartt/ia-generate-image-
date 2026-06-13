@@ -245,4 +245,89 @@ describe('SceneTemplateEditorModal', () => {
       }),
     ]);
   });
+
+  it('oferece Ken Burns para imagens e preserva a configuração na cena', () => {
+    const onChange = vi.fn();
+    const Harness = () => {
+      const [overrides, setOverrides] = React.useState<Scene['templateOverrides']>({});
+      return (
+        <SceneTemplateEditorModal
+          scene={{ ...scene, templateOverrides: overrides }}
+          markup={markup}
+          slots={slots}
+          onClose={vi.fn()}
+          onChange={(slotId, next) => {
+            onChange(slotId, next);
+            setOverrides((current) => ({ ...current, [slotId]: next ?? {} }));
+          }}
+          onElementsChange={vi.fn()}
+        />
+      );
+    };
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: '3. Imagem principal (image)' }));
+    fireEvent.click(screen.getByLabelText('Animar'));
+    fireEvent.change(screen.getByLabelText('Movimento Ken Burns'), {
+      target: { value: 'zoom-in' },
+    });
+    fireEvent.change(screen.getByLabelText('Intensidade Ken Burns'), {
+      target: { value: '0.2' },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      'main',
+      expect.objectContaining({
+        animation: expect.objectContaining({
+          kenBurns: { direction: 'zoom-in', intensity: 0.2 },
+        }),
+      }),
+    );
+  });
+
+  it('alinha elementos ao quadro e controla guias e áreas seguras', () => {
+    const initialElements: SceneTemplateElement[] = [
+      {
+        id: 'align-me',
+        type: 'text',
+        name: 'Alinhar',
+        x: 12,
+        y: 18,
+        width: 100,
+        height: 20,
+        text: 'Texto',
+      },
+    ];
+    const Harness = () => {
+      const [elements, setElements] = React.useState(initialElements);
+      return (
+        <>
+          <span data-testid="alignment-state">{JSON.stringify(elements)}</span>
+          <SceneTemplateEditorModal
+            scene={{ ...scene, templateElements: elements }}
+            markup={markup}
+            slots={[]}
+            onClose={vi.fn()}
+            onChange={vi.fn()}
+            onElementsChange={setElements}
+          />
+        </>
+      );
+    };
+
+    const { container } = render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Alinhar (text)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Centro H' }));
+    expect(screen.getByTestId('alignment-state').textContent).toContain('"x":30');
+
+    expect(container.querySelector('.scene-template-guides')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Guias' }));
+    expect(container.querySelector('.scene-template-guides')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Área segura de vídeo'), {
+      target: { value: 'both' },
+    });
+    expect(container.querySelector('.safe-action')).not.toBeNull();
+    expect(container.querySelector('.safe-title')).not.toBeNull();
+  });
 });

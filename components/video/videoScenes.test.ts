@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/types';
-import { createVideoScenes, defaultLetteringForScene } from './videoScenes';
+import { createVideoScenes, DEFAULT_KEN_BURNS, defaultLetteringForScene } from './videoScenes';
 
 const scene = (order: number, overrides: Partial<Scene> = {}): Scene => ({
   id: order,
@@ -13,6 +13,12 @@ const scene = (order: number, overrides: Partial<Scene> = {}): Scene => ({
   image_prompt: '',
   style: '',
   ...overrides,
+});
+
+describe('DEFAULT_KEN_BURNS', () => {
+  it('começa desativado para novas cenas', () => {
+    expect(DEFAULT_KEN_BURNS).toEqual({ direction: 'none', intensity: 0 });
+  });
 });
 
 describe('createVideoScenes', () => {

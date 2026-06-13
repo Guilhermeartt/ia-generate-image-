@@ -43,8 +43,8 @@ export const defaultLetteringForScene = (scene: Scene): SceneVideoLettering => (
 });
 
 export const DEFAULT_KEN_BURNS: VideoKenBurnsConfig = {
-  direction: 'zoom-in',
-  intensity: 0.045,
+  direction: 'none',
+  intensity: 0,
 };
 
 export const DEFAULT_TRANSITION: VideoClipTransition = 'crossfade';

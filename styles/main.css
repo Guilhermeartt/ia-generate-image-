@@ -521,7 +521,8 @@
       }
       .scene-template-canvas-toolbar > div { display: flex; align-items: center; gap: 3px; }
       .scene-template-canvas-toolbar button,
-      .scene-template-canvas-toolbar output {
+      .scene-template-canvas-toolbar output,
+      .scene-template-canvas-toolbar select {
         min-width: 26px;
         height: 25px;
         display: inline-grid;
@@ -533,13 +534,75 @@
         color: var(--text-3);
         font-size: 9px;
       }
+      .scene-template-canvas-toolbar select { max-width: 118px; outline: 0; }
       .scene-template-canvas-toolbar button { cursor: pointer; }
       .scene-template-canvas-toolbar button:hover:not(:disabled) { border-color: var(--indigo); color: var(--text-1); }
       .scene-template-canvas-toolbar button:disabled { opacity: .35; cursor: default; }
       .scene-template-canvas {
+        position: relative;
         min-width: 260px;
         display: flex;
         transition: width .18s ease;
+      }
+      .scene-template-guides,
+      .scene-template-safe-areas {
+        position: absolute;
+        z-index: 4;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .scene-template-guides i {
+        position: absolute;
+        display: block;
+        background: rgba(45, 212, 191, .78);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, .22);
+      }
+      .scene-template-guides .guide-v { top: 0; bottom: 0; width: 1px; }
+      .scene-template-guides .guide-h { right: 0; left: 0; height: 1px; }
+      .guide-center .guide-v-1 { left: 50%; }
+      .guide-center .guide-h-1 { top: 50%; }
+      .guide-center .guide-v-2,
+      .guide-center .guide-h-2 { display: none; }
+      .guide-thirds .guide-v-1 { left: 33.333%; }
+      .guide-thirds .guide-v-2 { left: 66.666%; }
+      .guide-thirds .guide-h-1 { top: 33.333%; }
+      .guide-thirds .guide-h-2 { top: 66.666%; }
+      .guide-grid {
+        background-image:
+          linear-gradient(to right, rgba(45, 212, 191, .36) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(45, 212, 191, .36) 1px, transparent 1px);
+        background-size: 10% 10%;
+      }
+      .guide-grid i { display: none; }
+      .scene-template-safe-areas > i {
+        position: absolute;
+        display: block;
+        border: 1px dashed;
+        border-radius: 2px;
+        font-style: normal;
+      }
+      .scene-template-safe-areas > i > span {
+        position: absolute;
+        top: 4px;
+        left: 6px;
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, .62);
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+      .scene-template-safe-areas .safe-action {
+        inset: 5%;
+        border-color: rgba(250, 204, 21, .9);
+        color: #fde047;
+      }
+      .scene-template-safe-areas .safe-title {
+        inset: 10%;
+        border-color: rgba(244, 114, 182, .92);
+        color: #f9a8d4;
       }
       .scene-template-preview-document {
         width: 100%;
@@ -626,6 +689,38 @@
         grid-template-columns: 1fr 1fr;
         gap: 7px;
       }
+      .scene-template-align-tools {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+      }
+      .scene-template-align-tools button {
+        min-width: 0;
+        padding: 6px 4px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--bg);
+        color: var(--text-3);
+        font-size: 8px;
+        cursor: pointer;
+      }
+      .scene-template-align-tools button:hover {
+        border-color: var(--indigo);
+        color: var(--text-1);
+      }
+      .svg-editor-ken-burns {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 9px;
+        border-top: 1px solid var(--border);
+      }
+      .svg-editor-ken-burns > strong {
+        color: var(--text-2);
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+      }
       .scene-template-grid input {
         width: 100%;
         min-width: 0;
@@ -695,6 +790,8 @@
         }
         .scene-template-preview { padding: 22px; }
         .scene-template-canvas-toolbar { margin: -12px -12px 14px; }
+        .scene-template-canvas-toolbar > span { display: none; }
+        .scene-template-canvas-toolbar > div { overflow-x: auto; }
         .scene-template-properties { max-height: 42vh; }
         .scene-template-editor-foot { padding: 9px 10px; }
       }
