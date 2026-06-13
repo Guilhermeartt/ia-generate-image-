@@ -217,8 +217,21 @@ const bakeTransform = (element: SVGGraphicsElement): void => {
         set('font-size', (Number.parseFloat(element.getAttribute('font-size') || '16') || 16) * Math.abs(sy));
       }
       break;
+    case 'path': {
+      // Só achata paths poligonais (M/L/Z); curvas mantêm o transform.
+      const parsed = parsePolyline(element.getAttribute('d') || '');
+      if (!parsed) return;
+      element.setAttribute(
+        'd',
+        serializePolyline(
+          parsed.points.map((p) => ({ x: sx * p.x + tx, y: sy * p.y + ty })),
+          parsed.closed,
+        ),
+      );
+      break;
+    }
     default:
-      return; // path / g / image: mantém o transform
+      return; // g / image: mantém o transform
   }
   element.removeAttribute('transform');
 };
@@ -336,10 +349,22 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   useLayoutEffect(refreshSelection, [markup, camera, viewport, refreshSelection]);
   useLayoutEffect(refreshNodes, [markup, camera, viewport, refreshNodes]);
 
+  // Encerra a caneta em andamento e descarta um path com um único ponto (lixo).
+  const finishPen = useCallback(() => {
+    const pen = penRef.current;
+    penRef.current = null;
+    if (!pen || pen.points.length >= 2) return;
+    const svg = hostRef.current?.querySelector('svg');
+    const before = svg ? new XMLSerializer().serializeToString(svg) : null;
+    svg?.querySelector(`#${CSS.escape(pen.id)}`)?.remove();
+    const after = svg ? new XMLSerializer().serializeToString(svg) : null;
+    if (before && after && before !== after) onCommit(before, after, 'Caneta', pen.id);
+  }, [onCommit]);
+
   // Sair da caneta encerra o desenho em andamento.
   useEffect(() => {
-    if (tool !== 'pen') penRef.current = null;
-  }, [tool]);
+    if (tool !== 'pen') finishPen();
+  }, [tool, finishPen]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -439,7 +464,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
       }
       return;
     }
-    if (tool === 'pen') penRef.current = null;
+    if (tool === 'pen') finishPen();
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -548,7 +573,12 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
         return;
       }
       const parsed = parsePolyline(path.getAttribute('d') || '');
-      const insertion = parsed && nearestInsertion(parsed.points, parsed.closed, point);
+      // Insere no espaço LOCAL do path (mesmo sistema do `d`), considerando transform.
+      const ctm = path.getScreenCTM();
+      const localPoint = ctm
+        ? pointThrough({ x: event.clientX, y: event.clientY }, ctm.inverse())
+        : point;
+      const insertion = parsed && nearestInsertion(parsed.points, parsed.closed, localPoint);
       if (parsed && insertion) {
         const next = [...parsed.points];
         next.splice(insertion.index, 0, insertion.point);

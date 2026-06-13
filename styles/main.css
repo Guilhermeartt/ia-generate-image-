@@ -340,6 +340,11 @@
         height: 100%;
         overflow: hidden;
       }
+      /* Permite selecionar/arrastar pelo interior mesmo formas sem preenchimento
+         (paths abertos, contornos), não só pela linha fina do traço. */
+      .svg-editor-document > svg :is(path, rect, circle, ellipse, line, polyline, polygon, text, image) {
+        pointer-events: all;
+      }
       .svg-editor-safe-area {
         position: absolute;
         z-index: 3;
