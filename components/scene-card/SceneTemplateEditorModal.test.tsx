@@ -330,4 +330,90 @@ describe('SceneTemplateEditorModal', () => {
     expect(container.querySelector('.safe-action')).not.toBeNull();
     expect(container.querySelector('.safe-title')).not.toBeNull();
   });
+
+  it('desfaz e refaz alterações da cena por botão e atalho', () => {
+    const initialElements: SceneTemplateElement[] = [
+      {
+        id: 'history-text',
+        type: 'text',
+        name: 'Histórico',
+        x: 12,
+        y: 18,
+        width: 100,
+        height: 20,
+        text: 'Texto',
+      },
+    ];
+    const Harness = () => {
+      const [elements, setElements] = React.useState(initialElements);
+      return (
+        <>
+          <span data-testid="history-state">{JSON.stringify(elements)}</span>
+          <SceneTemplateEditorModal
+            scene={{ ...scene, templateElements: elements }}
+            markup={markup}
+            slots={[]}
+            onClose={vi.fn()}
+            onChange={vi.fn()}
+            onElementsChange={setElements}
+          />
+        </>
+      );
+    };
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Centro H' }));
+    expect(screen.getByTestId('history-state').textContent).toContain('"x":30');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Desfazer edição da cena' }));
+    expect(screen.getByTestId('history-state').textContent).toContain('"x":12');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refazer edição da cena' }));
+    expect(screen.getByTestId('history-state').textContent).toContain('"x":30');
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(screen.getByTestId('history-state').textContent).toContain('"x":12');
+  });
+
+  it('limita o histórico da edição da cena aos 10 estados mais recentes', () => {
+    const initialElements: SceneTemplateElement[] = [
+      {
+        id: 'limited-history',
+        type: 'text',
+        name: 'Limite',
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 20,
+        text: 'Texto',
+      },
+    ];
+    const Harness = () => {
+      const [elements, setElements] = React.useState(initialElements);
+      return (
+        <>
+          <span data-testid="limited-history-state">{JSON.stringify(elements)}</span>
+          <SceneTemplateEditorModal
+            scene={{ ...scene, templateElements: elements }}
+            markup={markup}
+            slots={[]}
+            onClose={vi.fn()}
+            onChange={vi.fn()}
+            onElementsChange={setElements}
+          />
+        </>
+      );
+    };
+
+    render(<Harness />);
+    for (let x = 1; x <= 11; x += 1) {
+      fireEvent.change(screen.getByLabelText('X'), { target: { value: String(x) } });
+    }
+    for (let count = 0; count < 10; count += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Desfazer edição da cena' }));
+    }
+
+    expect(screen.getByTestId('limited-history-state').textContent).toContain('"x":1');
+    expect(screen.getByRole('button', { name: 'Desfazer edição da cena' })).toBeDisabled();
+  });
 });

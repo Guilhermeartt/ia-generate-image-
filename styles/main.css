@@ -765,6 +765,18 @@
         font-family: inherit;
         font-size: 8px;
       }
+      .scene-template-history-actions {
+        display: flex;
+        gap: 5px;
+      }
+      .scene-template-history-actions .btn {
+        min-height: 32px;
+        padding-inline: 10px;
+      }
+      .scene-template-history-actions .btn:disabled {
+        opacity: .4;
+        cursor: default;
+      }
       @media (max-width: 900px) {
         .scene-template-editor-body { grid-template-columns: 150px minmax(260px, 1fr); }
         .scene-template-properties {
@@ -794,6 +806,7 @@
         .scene-template-canvas-toolbar > div { overflow-x: auto; }
         .scene-template-properties { max-height: 42vh; }
         .scene-template-editor-foot { padding: 9px 10px; }
+        .scene-template-history-actions .btn { padding-inline: 8px; }
       }
 
       /* ── SVG editor ─────────────────────────────────────────── */

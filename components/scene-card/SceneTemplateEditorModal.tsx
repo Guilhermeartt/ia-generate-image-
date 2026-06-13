@@ -27,6 +27,17 @@ interface SceneTemplateEditorModalProps {
   onElementsChange: (elements: SceneTemplateElement[]) => void;
 }
 
+interface SceneEditorSnapshot {
+  overrides: Record<string, SceneTemplateSlotOverride>;
+  elements: SceneTemplateElement[];
+  selectedKey: string;
+}
+
+const HISTORY_LIMIT = 10;
+
+const cloneSnapshot = (snapshot: SceneEditorSnapshot): SceneEditorSnapshot =>
+  JSON.parse(JSON.stringify(snapshot)) as SceneEditorSnapshot;
+
 const ICON_PRESETS = {
   estrela:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12 2 3.1 6.3 6.9 1-5 4.8 1.2 6.9-6.2-3.3L5.8 21 7 14.1l-5-4.8 6.9-1Z" fill="currentColor"/></svg>',
@@ -185,12 +196,30 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   const [animationPlaying, setAnimationPlaying] = useState(true);
   const [animationTime, setAnimationTime] = useState(0);
   const animationTimeRef = useRef(0);
+  const historyRef = useRef<{ past: SceneEditorSnapshot[]; future: SceneEditorSnapshot[] }>({
+    past: [],
+    future: [],
+  });
+  const [historyStatus, setHistoryStatus] = useState({ canUndo: false, canRedo: false });
+  const currentSnapshotRef = useRef<SceneEditorSnapshot>({
+    overrides: scene.templateOverrides ?? {},
+    elements,
+    selectedKey,
+  });
+  useEffect(() => {
+    currentSnapshotRef.current = {
+      overrides: scene.templateOverrides ?? {},
+      elements,
+      selectedKey,
+    };
+  }, [scene.templateOverrides, elements, selectedKey]);
   const dragRef = useRef<{
     key: string;
     startClientX: number;
     startClientY: number;
     startX: number;
     startY: number;
+    historyRecorded: boolean;
   } | null>(null);
   const selectedSlot = selectedKey.startsWith('slot:')
     ? slots.find((slot) => slot.id === selectedKey.slice(5))
@@ -260,20 +289,91 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     [slots, scene.templateOverrides, animatedSlotStyles],
   );
 
+  const refreshHistoryControls = () => setHistoryStatus({
+    canUndo: historyRef.current.past.length > 0,
+    canRedo: historyRef.current.future.length > 0,
+  });
+  const pushHistory = () => {
+    const history = historyRef.current;
+    history.past = [...history.past, cloneSnapshot(currentSnapshotRef.current)].slice(-HISTORY_LIMIT);
+    history.future = [];
+    refreshHistoryControls();
+  };
+  const applySnapshot = (snapshot: SceneEditorSnapshot) => {
+    const next = cloneSnapshot(snapshot);
+    const slotIds = new Set([
+      ...Object.keys(currentSnapshotRef.current.overrides),
+      ...Object.keys(next.overrides),
+    ]);
+    for (const slotId of slotIds) onChange(slotId, next.overrides[slotId]);
+    onElementsChange(next.elements);
+    const selectedElementExists = next.selectedKey.startsWith('element:')
+      && next.elements.some((element) => element.id === next.selectedKey.slice(8));
+    const selectedSlotExists = next.selectedKey.startsWith('slot:')
+      && slots.some((slot) => slot.id === next.selectedKey.slice(5));
+    const nextSelectedKey = selectedElementExists || selectedSlotExists
+      ? next.selectedKey
+      : slots[0]
+        ? `slot:${slots[0].id}`
+        : next.elements[0]
+          ? `element:${next.elements[0].id}`
+          : '';
+    currentSnapshotRef.current = { ...next, selectedKey: nextSelectedKey };
+    setSelectedKey(nextSelectedKey);
+  };
+  const undo = () => {
+    const history = historyRef.current;
+    const previous = history.past[history.past.length - 1];
+    if (!previous) return;
+    history.past = history.past.slice(0, -1);
+    history.future = [cloneSnapshot(currentSnapshotRef.current), ...history.future].slice(0, HISTORY_LIMIT);
+    applySnapshot(previous);
+    setActionMessage('Alteração desfeita');
+    refreshHistoryControls();
+  };
+  const redo = () => {
+    const history = historyRef.current;
+    const next = history.future[0];
+    if (!next) return;
+    history.future = history.future.slice(1);
+    history.past = [...history.past, cloneSnapshot(currentSnapshotRef.current)].slice(-HISTORY_LIMIT);
+    applySnapshot(next);
+    setActionMessage('Alteração refeita');
+    refreshHistoryControls();
+  };
+  const commitSlotChange = (
+    slotId: string,
+    nextOverride: SceneTemplateSlotOverride | undefined,
+  ) => {
+    pushHistory();
+    const overrides = { ...currentSnapshotRef.current.overrides };
+    if (nextOverride && Object.keys(nextOverride).length > 0) overrides[slotId] = nextOverride;
+    else delete overrides[slotId];
+    currentSnapshotRef.current = { ...currentSnapshotRef.current, overrides };
+    onChange(slotId, nextOverride);
+  };
+  const commitElementsChange = (nextElements: SceneTemplateElement[]) => {
+    pushHistory();
+    currentSnapshotRef.current = {
+      ...currentSnapshotRef.current,
+      elements: nextElements,
+    };
+    onElementsChange(nextElements);
+  };
   const patchSlot = (changes: Partial<SceneTemplateSlotOverride>) => {
-    if (selectedSlot) onChange(selectedSlot.id, { ...override, ...changes });
+    if (selectedSlot) commitSlotChange(selectedSlot.id, { ...override, ...changes });
   };
   const patchElement = (changes: Partial<SceneTemplateElement>) => {
     if (!selectedElement) return;
     const normalized = 'rotation' in changes
       ? { ...changes, sourceTransform: undefined }
       : changes;
-    onElementsChange(elements.map((element) => (
+    commitElementsChange(elements.map((element) => (
       element.id === selectedElement.id ? { ...element, ...normalized } : element
     )));
   };
   const addElements = (next: SceneTemplateElement[]) => {
-    onElementsChange([...elements, ...next]);
+    commitElementsChange([...elements, ...next]);
     const last = next[next.length - 1];
     if (last) setSelectedKey(`element:${last.id}`);
     setActionMessage(`${next.length} elemento${next.length === 1 ? '' : 's'} adicionado${next.length === 1 ? '' : 's'}`);
@@ -283,7 +383,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   };
   const removeElement = () => {
     if (!selectedElement) return;
-    onElementsChange(
+    commitElementsChange(
       elements
         .filter((element) => element.id !== selectedElement.id)
         .map((element) => (
@@ -306,7 +406,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     const sourceIndex = elements.findIndex((element) => element.id === elementId);
     const next = [...elements];
     next.splice(sourceIndex + 1, 0, copy);
-    onElementsChange(next);
+    commitElementsChange(next);
     setSelectedKey(`element:${copy.id}`);
     setActionMessage(`${source.name} duplicado na mesma posição`);
   };
@@ -398,11 +498,11 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
           ? Math.min(next.length, index + 1)
           : Math.max(0, index - 1);
     next.splice(target, 0, element);
-    onElementsChange(next);
+    commitElementsChange(next);
     setActionMessage(`Camada ${element.name} reorganizada`);
   };
   const toggleElementVisibility = (elementId: string) => {
-    onElementsChange(elements.map((element) => (
+    commitElementsChange(elements.map((element) => (
       element.id === elementId ? { ...element, hidden: !element.hidden } : element
     )));
   };
@@ -410,9 +510,21 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   useEffect(() => {
     const handleEditorShortcut = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
+      const command = event.metaKey || event.ctrlKey;
+      if (command && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (command && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redo();
+        return;
+      }
       if (target?.closest('input, textarea, select')) return;
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
+      if (command && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         if (selectedElement) duplicateElement();
         else if (selectedSlot) duplicateSlot();
@@ -543,6 +655,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         startClientY: event.clientY,
         startX: element.x,
         startY: element.y,
+        historyRecorded: false,
       };
     } else {
       const current = scene.templateOverrides?.[slotId] ?? {};
@@ -552,6 +665,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         startClientY: event.clientY,
         startX: current.translateX ?? 0,
         startY: current.translateY ?? 0,
+        historyRecorded: false,
       };
     }
     setSelectedKey(key);
@@ -567,22 +681,39 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     if (!rect?.width || !rect.height) return;
     const dx = ((event.clientX - drag.startClientX) / rect.width) * dimensions.width;
     const dy = ((event.clientY - drag.startClientY) / rect.height) * dimensions.height;
+    if (!drag.historyRecorded && (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01)) {
+      pushHistory();
+      drag.historyRecorded = true;
+    }
 
     if (drag.key.startsWith('element:')) {
       const id = drag.key.slice(8);
-      onElementsChange(elements.map((element) => (
+      const nextElements = elements.map((element) => (
         element.id === id
           ? { ...element, x: Math.round(drag.startX + dx), y: Math.round(drag.startY + dy) }
           : element
-      )));
+      ));
+      currentSnapshotRef.current = {
+        ...currentSnapshotRef.current,
+        elements: nextElements,
+      };
+      onElementsChange(nextElements);
     } else {
       const id = drag.key.slice(5);
       const current = scene.templateOverrides?.[id] ?? {};
-      onChange(id, {
+      const nextOverride = {
         ...current,
         translateX: Math.round(drag.startX + dx),
         translateY: Math.round(drag.startY + dy),
-      });
+      };
+      currentSnapshotRef.current = {
+        ...currentSnapshotRef.current,
+        overrides: {
+          ...currentSnapshotRef.current.overrides,
+          [id]: nextOverride,
+        },
+      };
+      onChange(id, nextOverride);
     }
   };
 
@@ -789,7 +920,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                   {selectedSlot ? (
                     <div className="scene-template-element-actions">
                       <button type="button" aria-label={`Duplicar ${selectedSlot.name}`} onClick={duplicateSlot}>Duplicar</button>
-                      <button type="button" onClick={() => onChange(selectedSlot.id, undefined)}>Restaurar</button>
+                      <button type="button" onClick={() => commitSlotChange(selectedSlot.id, undefined)}>Restaurar</button>
                     </div>
                   ) : (
                     <div className="scene-template-element-actions">
@@ -888,7 +1019,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                               const maskElementId = event.target.value || undefined;
                               const mask = elements.find((element) => element.id === maskElementId);
                               if (mask?.type === 'shape') {
-                                onElementsChange(elements.map((element) => {
+                                commitElementsChange(elements.map((element) => {
                                   if (element.id === selectedElement.id) {
                                     return {
                                       ...element,
@@ -1059,15 +1190,39 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         <footer className="scene-template-editor-foot">
           <div className="scene-template-editor-status" aria-live="polite">
             <span>{actionMessage}</span>
-            <small><kbd>Ctrl D</kbd> duplicar <kbd>Setas</kbd> mover <kbd>Shift + Setas</kbd> mover 10 <kbd>Del</kbd> excluir</small>
+            <small><kbd>Ctrl Z</kbd> desfazer <kbd>Ctrl Shift Z</kbd> refazer <kbd>Ctrl D</kbd> duplicar <kbd>Setas</kbd> mover</small>
+          </div>
+          <div className="scene-template-history-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label="Desfazer edição da cena"
+              disabled={!historyStatus.canUndo}
+              onClick={undo}
+            >
+              Desfazer
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label="Refazer edição da cena"
+              disabled={!historyStatus.canRedo}
+              onClick={redo}
+            >
+              Refazer
+            </button>
           </div>
           <button
             type="button"
             className="btn btn-ghost"
             onClick={() => {
-              for (const slot of slots) onChange(slot.id, undefined);
-              onElementsChange([]);
-              setSelectedKey(slots[0] ? `slot:${slots[0].id}` : '');
+              pushHistory();
+              applySnapshot({
+                overrides: {},
+                elements: [],
+                selectedKey: slots[0] ? `slot:${slots[0].id}` : '',
+              });
+              setActionMessage('Cena restaurada');
             }}
           >
             Restaurar cena
