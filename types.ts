@@ -419,6 +419,17 @@ export interface Scene {
   templateId?: string;
   /** Ajustes da instância do modelo nesta cena. Chave: id estável do slot. */
   templateOverrides?: Record<string, SceneTemplateSlotOverride>;
+  /** Elementos acrescentados somente a esta cena, desenhados sobre o modelo. */
+  templateElements?: SceneTemplateElement[];
+}
+
+export interface SceneTemplateAnimation {
+  enter: VideoLetteringEnterAnimation;
+  exit: VideoLetteringExitAnimation;
+  startSeconds?: number;
+  endSeconds?: number;
+  enterDurationSeconds?: number;
+  exitDurationSeconds?: number;
 }
 
 export interface SceneTemplateSlotOverride {
@@ -436,14 +447,37 @@ export interface SceneTemplateSlotOverride {
   fontWeight?: number;
   opacity?: number;
   hidden?: boolean;
-  animation?: {
-    enter: VideoLetteringEnterAnimation;
-    exit: VideoLetteringExitAnimation;
-    startSeconds?: number;
-    endSeconds?: number;
-    enterDurationSeconds?: number;
-    exitDurationSeconds?: number;
-  } | null;
+  animation?: SceneTemplateAnimation | null;
+}
+
+export type SceneTemplateElementType = 'text' | 'image' | 'icon' | 'shape';
+export type SceneTemplateShape = 'rectangle' | 'pill' | 'circle' | 'line';
+
+export interface SceneTemplateElement {
+  id: string;
+  type: SceneTemplateElementType;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  opacity?: number;
+  hidden?: boolean;
+  text?: string;
+  imageHref?: string;
+  imageFit?: 'cover' | 'contain';
+  iconSvg?: string;
+  shape?: SceneTemplateShape;
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  borderRadius?: number;
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: number;
+  textAlign?: 'start' | 'middle' | 'end';
+  animation?: SceneTemplateAnimation | null;
 }
 
 /** Configuração global do estúdio de vídeo do storyboard. */

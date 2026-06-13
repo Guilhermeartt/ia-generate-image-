@@ -264,6 +264,7 @@ const App: React.FC = () => {
     handleSceneReferencesChange,
     handleSceneTemplateChange,
     handleSceneTemplateOverrideChange,
+    handleSceneTemplateElementsChange,
   } = useScenes({
     imageModel,
     aspectRatio,
@@ -2265,6 +2266,7 @@ REGRAS ESTRITAS:
                         onSceneReferencesChange={handleSceneReferencesChange}
                         onSceneTemplateChange={handleSceneTemplateChange}
                         onSceneTemplateOverrideChange={handleSceneTemplateOverrideChange}
+                        onSceneTemplateElementsChange={handleSceneTemplateElementsChange}
                       />
                     ))}
                   </div>

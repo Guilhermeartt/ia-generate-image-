@@ -118,4 +118,48 @@ describe('renderTemplate', () => {
     expect(group?.getAttribute('style')).toContain('translate(20px, 5px)');
     expect(group?.querySelector('rect')?.id).toBe(r.id);
   });
+
+  it('acrescenta textos, formas, imagens e ícones exclusivos da cena', () => {
+    const out = renderTemplate(createBlankSvg(), [], {
+      additionalElements: [
+        {
+          id: 'extra-text', type: 'text', name: 'Título', x: 10, y: 20,
+          width: 200, height: 60, text: 'Texto extra', fill: '#ff0000', fontSize: 32,
+        },
+        {
+          id: 'extra-shape', type: 'shape', name: 'Fundo', x: 0, y: 0,
+          width: 300, height: 100, shape: 'pill', fill: '#0000ff',
+        },
+        {
+          id: 'extra-image', type: 'image', name: 'Foto', x: 20, y: 100,
+          width: 120, height: 80, imageHref: 'data:image/png;base64,aA==', borderRadius: 12,
+        },
+        {
+          id: 'extra-icon', type: 'icon', name: 'Selo', x: 160, y: 100,
+          width: 48, height: 48,
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>',
+        },
+      ],
+    });
+    const doc = parse(out);
+
+    expect(doc.querySelector('[data-scene-element-id="extra-text"] text')?.textContent).toBe('Texto extra');
+    expect(doc.querySelector('[data-scene-element-id="extra-shape"] rect')?.getAttribute('rx')).toBe('50');
+    expect(doc.querySelector('[data-scene-element-id="extra-image"] image')?.getAttribute('clip-path')).toMatch(/^url\(#scene-element-clip-/);
+    expect(doc.querySelector('[data-scene-element-id="extra-icon"] svg path')).not.toBeNull();
+  });
+
+  it('aplica estado animado a elemento adicional', () => {
+    const out = renderTemplate(createBlankSvg(), [], {
+      additionalElements: [
+        { id: 'extra', type: 'shape', name: 'Forma', x: 0, y: 0, width: 100, height: 50 },
+      ],
+      additionalStyleById: {
+        extra: { opacity: 0.5, transform: 'translate(20px, 0px)' },
+      },
+    });
+    const group = parse(out).querySelector('[data-scene-element-id="extra"]');
+    expect(group?.getAttribute('style')).toContain('opacity:0.5');
+    expect(group?.getAttribute('style')).toContain('translate(20px, 0px)');
+  });
 });

@@ -262,6 +262,41 @@
         display: grid;
         grid-template-columns: 210px minmax(320px, 1fr) 320px;
       }
+      .scene-template-editor-library {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        padding: 8px 12px;
+        overflow-x: auto;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-2);
+      }
+      .scene-template-editor-library > div {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+      }
+      .scene-template-editor-library strong {
+        margin-right: 3px;
+        color: var(--text-4);
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+      }
+      .scene-template-editor-library button {
+        padding: 6px 9px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--text-2);
+        font-size: 10px;
+        cursor: pointer;
+      }
+      .scene-template-editor-library button:hover {
+        border-color: var(--indigo);
+        color: var(--text-1);
+      }
       .scene-template-slot-list,
       .scene-template-properties {
         min-height: 0;
@@ -291,6 +326,14 @@
       }
       .scene-template-slot-list button.selected { box-shadow: inset 3px 0 0 var(--indigo); }
       .scene-template-slot-list small { color: var(--text-4); font-size: 9px; text-transform: uppercase; }
+      .scene-template-list-label {
+        margin: 10px 8px 5px;
+        color: var(--text-4);
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+      }
       .scene-template-preview {
         min-width: 0;
         display: grid;
@@ -300,6 +343,7 @@
         background-color: var(--bg);
         background-image: radial-gradient(circle, var(--border-md) 1px, transparent 1px);
         background-size: 20px 20px;
+        touch-action: none;
       }
       .scene-template-preview-document {
         width: min(100%, 760px);
@@ -312,6 +356,13 @@
         width: 100%;
         height: auto;
         max-height: 72vh;
+      }
+      .scene-template-preview-document :is(
+        [data-scene-element-id],
+        [data-rendered-slot-id],
+        [data-slot]
+      ) {
+        cursor: move;
       }
       .scene-template-properties {
         display: flex;
@@ -345,6 +396,8 @@
         font-size: 9px;
         cursor: pointer;
       }
+      .scene-template-element-actions { display: flex; gap: 4px; }
+      .scene-template-element-actions button:last-child { color: var(--red, #ef4444); }
       .scene-template-section {
         display: flex;
         flex-direction: column;

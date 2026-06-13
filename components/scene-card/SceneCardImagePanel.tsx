@@ -91,7 +91,10 @@ const SceneCardImagePanel: React.FC<SceneCardImagePanelProps> = ({
             <TemplateRenderer
               markup={templateMarkup}
               contents={templateContents}
-              options={{ styleById: templateStyles }}
+              options={{
+                styleById: templateStyles,
+                additionalElements: scene.templateElements,
+              }}
               className="sc-template-render"
               style={{ width: '100%', height: '100%', display: 'flex' }}
             />

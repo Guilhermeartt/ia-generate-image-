@@ -197,6 +197,7 @@ export const createVideoScenes = (
         parentSceneDurationSeconds: 0,
         templateId: scene.templateId,
         templateOverrides: scene.templateOverrides,
+        templateElements: scene.templateElements,
       } satisfies StoryboardVideoScene;
       globalClipIndex += 1;
       return clip;

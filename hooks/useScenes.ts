@@ -5,6 +5,7 @@ import type {
   ImageModel,
   Scene,
   SceneReference,
+  SceneTemplateElement,
   SceneTemplateSlotOverride,
 } from '../types';
 import type { SplitImage } from '../types';
@@ -908,7 +909,9 @@ export function useScenes({
 
   const handleSceneTemplateChange = useCallback((id: number, templateId: string | undefined) => {
     setScenes(prev => prev.map(s => (
-      s.id === id ? { ...s, templateId, templateOverrides: undefined } : s
+      s.id === id
+        ? { ...s, templateId, templateOverrides: undefined, templateElements: undefined }
+        : s
     )));
   }, []);
 
@@ -921,6 +924,17 @@ export function useScenes({
         else delete overrides[slotId];
         return { ...s, templateOverrides: Object.keys(overrides).length ? overrides : undefined };
       }));
+    },
+    [],
+  );
+
+  const handleSceneTemplateElementsChange = useCallback(
+    (id: number, elements: SceneTemplateElement[]) => {
+      setScenes(prev => prev.map(s => (
+        s.id === id
+          ? { ...s, templateElements: elements.length ? elements : undefined }
+          : s
+      )));
     },
     [],
   );
@@ -963,5 +977,6 @@ export function useScenes({
     handleSceneReferencesChange,
     handleSceneTemplateChange,
     handleSceneTemplateOverrideChange,
+    handleSceneTemplateElementsChange,
   };
 }

@@ -11,6 +11,7 @@ import {
 } from 'remotion';
 import type {
   Scene,
+  SceneTemplateElement,
   SceneTemplateSlotOverride,
   SceneVideoLettering,
   VideoAudioTrack,
@@ -50,6 +51,8 @@ export interface StoryboardVideoScene {
   templateId?: string;
   /** Instância editável do modelo para esta cena. */
   templateOverrides?: Record<string, SceneTemplateSlotOverride>;
+  /** Elementos adicionados sobre o modelo somente nesta cena. */
+  templateElements?: SceneTemplateElement[];
 }
 
 export interface StoryboardCompositionProps {
@@ -250,7 +253,17 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
       if (animation) animatedById[slot.id] = slotStyleAtTime(animation, localTime);
     }
     const styleById = buildSceneSlotStyles(templateSlots, clip.templateOverrides, animatedById);
-    return renderTemplate(templateMarkup, contents, { styleById });
+    const additionalStyleById: Record<string, EnterExitStyle> = {};
+    for (const element of clip.templateElements ?? []) {
+      if (element.animation) {
+        additionalStyleById[element.id] = slotStyleAtTime(element.animation, localTime);
+      }
+    }
+    return renderTemplate(templateMarkup, contents, {
+      styleById,
+      additionalElements: clip.templateElements,
+      additionalStyleById,
+    });
   }, [templateMarkup, templateSlots, clip, frame, fps]);
 
   // Ken Burns com aceleração suave (ease-in-out) nas pontas — movimento mais premium.

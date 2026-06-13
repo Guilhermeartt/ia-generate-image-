@@ -1,6 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import type { Scene, SceneTemplateSlotOverride } from '../../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  Scene,
+  SceneTemplateElement,
+  SceneTemplateElementType,
+  SceneTemplateSlotOverride,
+} from '../../types';
 import type { TemplateSlot } from '../svg-editor/types';
+import { parseViewBox } from '../svg-editor/svgDocument';
 import { buildSceneSlotStyles, resolveSlotContents } from '../svg-editor/templateBinding';
 import TemplateRenderer from '../svg-editor/TemplateRenderer';
 import SlotAnimationEditor from '../svg-editor/SlotAnimationEditor';
@@ -11,6 +17,7 @@ interface SceneTemplateEditorModalProps {
   slots: TemplateSlot[];
   onClose: () => void;
   onChange: (slotId: string, override: SceneTemplateSlotOverride | undefined) => void;
+  onElementsChange: (elements: SceneTemplateElement[]) => void;
 }
 
 const ICON_PRESETS = {
@@ -28,16 +35,154 @@ const numberValue = (raw: string): number | undefined => {
   return Number.isFinite(value) ? value : undefined;
 };
 
+const createId = (): string =>
+  `scene-el-${typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+
+const createElement = (
+  type: SceneTemplateElementType,
+  width: number,
+  height: number,
+  index: number,
+): SceneTemplateElement => {
+  const common = {
+    id: createId(),
+    type,
+    name: `Novo ${type === 'text' ? 'texto' : type === 'image' ? 'imagem' : type === 'icon' ? 'ícone' : 'grafismo'}`,
+    x: width * 0.12 + index * 12,
+    y: height * 0.12 + index * 12,
+    width: type === 'icon' ? width * 0.08 : width * 0.34,
+    height: type === 'text' ? height * 0.09 : type === 'icon' ? width * 0.08 : height * 0.2,
+  };
+  if (type === 'text') {
+    return { ...common, text: 'Novo texto', fill: '#ffffff', fontSize: Math.round(height * 0.055), fontWeight: 700 };
+  }
+  if (type === 'image') {
+    return { ...common, imageFit: 'cover', borderRadius: 18 };
+  }
+  if (type === 'icon') {
+    return { ...common, iconSvg: ICON_PRESETS.estrela, fill: '#ffffff' };
+  }
+  return { ...common, shape: 'rectangle', fill: '#7f77dd', borderRadius: 16 };
+};
+
+const presetElements = (
+  preset: 'title' | 'lower-third' | 'badge' | 'image-card',
+  width: number,
+  height: number,
+  imageHref?: string,
+): SceneTemplateElement[] => {
+  if (preset === 'title') {
+    return [
+      {
+        id: createId(), type: 'shape', name: 'Fundo do título',
+        x: width * 0.08, y: height * 0.34, width: width * 0.84, height: height * 0.3,
+        shape: 'rectangle', fill: '#111827', opacity: 0.86, borderRadius: 28,
+      },
+      {
+        id: createId(), type: 'text', name: 'Título principal',
+        x: width * 0.13, y: height * 0.4, width: width * 0.74, height: height * 0.11,
+        text: 'TÍTULO DA CENA', fill: '#ffffff', fontSize: Math.round(height * 0.075),
+        fontWeight: 800, textAlign: 'middle',
+      },
+      {
+        id: createId(), type: 'text', name: 'Subtítulo',
+        x: width * 0.2, y: height * 0.52, width: width * 0.6, height: height * 0.06,
+        text: 'Subtítulo ou contexto', fill: '#c7d2fe', fontSize: Math.round(height * 0.032),
+        fontWeight: 500, textAlign: 'middle',
+      },
+    ];
+  }
+  if (preset === 'lower-third') {
+    return [
+      {
+        id: createId(), type: 'shape', name: 'Barra inferior',
+        x: width * 0.06, y: height * 0.72, width: width * 0.58, height: height * 0.18,
+        shape: 'rectangle', fill: '#111827', opacity: 0.9, borderRadius: 18,
+      },
+      {
+        id: createId(), type: 'shape', name: 'Destaque',
+        x: width * 0.06, y: height * 0.72, width: width * 0.012, height: height * 0.18,
+        shape: 'pill', fill: '#7f77dd',
+      },
+      {
+        id: createId(), type: 'text', name: 'Nome',
+        x: width * 0.09, y: height * 0.745, width: width * 0.5, height: height * 0.07,
+        text: 'NOME OU TÍTULO', fill: '#ffffff', fontSize: Math.round(height * 0.042), fontWeight: 800,
+      },
+      {
+        id: createId(), type: 'text', name: 'Descrição',
+        x: width * 0.09, y: height * 0.815, width: width * 0.5, height: height * 0.045,
+        text: 'Descrição complementar', fill: '#cbd5e1', fontSize: Math.round(height * 0.026), fontWeight: 500,
+      },
+    ];
+  }
+  if (preset === 'badge') {
+    return [
+      {
+        id: createId(), type: 'shape', name: 'Fundo do selo',
+        x: width * 0.72, y: height * 0.08, width: width * 0.22, height: height * 0.09,
+        shape: 'pill', fill: '#7f77dd',
+      },
+      {
+        id: createId(), type: 'icon', name: 'Ícone do selo',
+        x: width * 0.74, y: height * 0.095, width: height * 0.055, height: height * 0.055,
+        iconSvg: ICON_PRESETS.estrela, fill: '#ffffff',
+      },
+      {
+        id: createId(), type: 'text', name: 'Texto do selo',
+        x: width * 0.79, y: height * 0.095, width: width * 0.13, height: height * 0.055,
+        text: 'DESTAQUE', fill: '#ffffff', fontSize: Math.round(height * 0.025), fontWeight: 800,
+      },
+    ];
+  }
+  return [
+    {
+      id: createId(), type: 'shape', name: 'Fundo do card',
+      x: width * 0.6, y: height * 0.52, width: width * 0.33, height: height * 0.4,
+      shape: 'rectangle', fill: '#ffffff', opacity: 0.96, borderRadius: 22,
+    },
+    {
+      id: createId(), type: 'image', name: 'Imagem do card',
+      x: width * 0.615, y: height * 0.54, width: width * 0.3, height: height * 0.25,
+      imageHref, imageFit: 'cover', borderRadius: 14,
+    },
+    {
+      id: createId(), type: 'text', name: 'Legenda do card',
+      x: width * 0.625, y: height * 0.81, width: width * 0.28, height: height * 0.07,
+      text: 'Legenda da imagem', fill: '#111827', fontSize: Math.round(height * 0.03), fontWeight: 700,
+    },
+  ];
+};
+
 const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   scene,
   markup,
   slots,
   onClose,
   onChange,
+  onElementsChange,
 }) => {
-  const [selectedId, setSelectedId] = useState(slots[0]?.id ?? '');
-  const selected = slots.find((slot) => slot.id === selectedId) ?? slots[0];
-  const override = selected ? scene.templateOverrides?.[selected.id] ?? {} : {};
+  const dimensions = parseViewBox(markup) ?? { width: 1280, height: 720 };
+  const elements = scene.templateElements ?? [];
+  const [selectedKey, setSelectedKey] = useState(
+    slots[0] ? `slot:${slots[0].id}` : elements[0] ? `element:${elements[0].id}` : '',
+  );
+  const dragRef = useRef<{
+    key: string;
+    startClientX: number;
+    startClientY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const selectedSlot = selectedKey.startsWith('slot:')
+    ? slots.find((slot) => slot.id === selectedKey.slice(5))
+    : undefined;
+  const selectedElement = selectedKey.startsWith('element:')
+    ? elements.find((element) => element.id === selectedKey.slice(8))
+    : undefined;
+  const override = selectedSlot ? scene.templateOverrides?.[selectedSlot.id] ?? {} : {};
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -56,9 +201,38 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     [slots, scene.templateOverrides],
   );
 
-  const patch = (changes: Partial<SceneTemplateSlotOverride>) => {
-    if (!selected) return;
-    onChange(selected.id, { ...override, ...changes });
+  const patchSlot = (changes: Partial<SceneTemplateSlotOverride>) => {
+    if (selectedSlot) onChange(selectedSlot.id, { ...override, ...changes });
+  };
+  const patchElement = (changes: Partial<SceneTemplateElement>) => {
+    if (!selectedElement) return;
+    onElementsChange(elements.map((element) => (
+      element.id === selectedElement.id ? { ...element, ...changes } : element
+    )));
+  };
+  const addElements = (next: SceneTemplateElement[]) => {
+    onElementsChange([...elements, ...next]);
+    const last = next[next.length - 1];
+    if (last) setSelectedKey(`element:${last.id}`);
+  };
+  const addElement = (type: SceneTemplateElementType) => {
+    addElements([createElement(type, dimensions.width, dimensions.height, elements.length)]);
+  };
+  const removeElement = () => {
+    if (!selectedElement) return;
+    onElementsChange(elements.filter((element) => element.id !== selectedElement.id));
+    setSelectedKey(slots[0] ? `slot:${slots[0].id}` : '');
+  };
+  const duplicateElement = () => {
+    if (!selectedElement) return;
+    const copy = {
+      ...selectedElement,
+      id: createId(),
+      name: `${selectedElement.name} cópia`,
+      x: selectedElement.x + 18,
+      y: selectedElement.y + 18,
+    };
+    addElements([copy]);
   };
 
   const imageOptions = useMemo(
@@ -80,6 +254,81 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     else reader.readAsDataURL(file);
   };
 
+  const selectedType = selectedSlot?.type ?? selectedElement?.type;
+  const value = selectedElement ?? override;
+  const patch = selectedElement ? patchElement : patchSlot;
+  const total = slots.length + elements.length;
+
+  const handlePreviewPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+    const target = event.target as Element;
+    const rendered =
+      target.closest<SVGElement>('[data-scene-element-id]')
+      ?? target.closest<SVGElement>('[data-rendered-slot-id], [data-slot]');
+    if (!rendered) return;
+    const elementId = rendered.getAttribute('data-scene-element-id');
+    const slotId = rendered.getAttribute('data-rendered-slot-id') || rendered.id;
+    const key = elementId ? `element:${elementId}` : slotId ? `slot:${slotId}` : '';
+    if (!key) return;
+
+    if (elementId) {
+      const element = elements.find((item) => item.id === elementId);
+      if (!element) return;
+      dragRef.current = {
+        key,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startX: element.x,
+        startY: element.y,
+      };
+    } else {
+      const current = scene.templateOverrides?.[slotId] ?? {};
+      dragRef.current = {
+        key,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startX: current.translateX ?? 0,
+        startY: current.translateY ?? 0,
+      };
+    }
+    setSelectedKey(key);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const handlePreviewPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const svg = event.currentTarget.querySelector('svg');
+    const rect = svg?.getBoundingClientRect();
+    if (!rect?.width || !rect.height) return;
+    const dx = ((event.clientX - drag.startClientX) / rect.width) * dimensions.width;
+    const dy = ((event.clientY - drag.startClientY) / rect.height) * dimensions.height;
+
+    if (drag.key.startsWith('element:')) {
+      const id = drag.key.slice(8);
+      onElementsChange(elements.map((element) => (
+        element.id === id
+          ? { ...element, x: Math.round(drag.startX + dx), y: Math.round(drag.startY + dy) }
+          : element
+      )));
+    } else {
+      const id = drag.key.slice(5);
+      const current = scene.templateOverrides?.[id] ?? {};
+      onChange(id, {
+        ...current,
+        translateX: Math.round(drag.startX + dx),
+        translateY: Math.round(drag.startY + dy),
+      });
+    }
+  };
+
+  const handlePreviewPointerUp = (event: React.PointerEvent<HTMLElement>) => {
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   return (
     <div
       className="scene-template-editor-backdrop"
@@ -94,74 +343,124 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         <header className="scene-template-editor-head">
           <div>
             <strong>Editar composição da cena</strong>
-            <span>
-              {slots.length} elemento{slots.length === 1 ? '' : 's'} · alterações exclusivas desta cena
-            </span>
+            <span>{total} elemento{total === 1 ? '' : 's'} · alterações exclusivas desta cena</span>
           </div>
           <button type="button" onClick={onClose} aria-label="Fechar">×</button>
         </header>
 
+        <div className="scene-template-editor-library">
+          <div>
+            <strong>Adicionar</strong>
+            <button type="button" onClick={() => addElement('text')}>Texto</button>
+            <button type="button" onClick={() => addElement('image')}>Imagem</button>
+            <button type="button" onClick={() => addElement('icon')}>Ícone</button>
+            <button type="button" onClick={() => addElement('shape')}>Forma</button>
+          </div>
+          <div>
+            <strong>Blocos prontos</strong>
+            <button type="button" onClick={() => addElements(presetElements('title', dimensions.width, dimensions.height))}>Título central</button>
+            <button type="button" onClick={() => addElements(presetElements('lower-third', dimensions.width, dimensions.height))}>Lower third</button>
+            <button type="button" onClick={() => addElements(presetElements('badge', dimensions.width, dimensions.height))}>Selo</button>
+            <button type="button" onClick={() => addElements(presetElements('image-card', dimensions.width, dimensions.height, scene.imageUrl))}>Card de imagem</button>
+          </div>
+        </div>
+
         <div className="scene-template-editor-body">
           <aside className="scene-template-slot-list">
+            {slots.length > 0 && <p className="scene-template-list-label">Do modelo</p>}
             {slots.map((slot, index) => (
               <button
                 key={slot.id}
                 type="button"
                 aria-label={`${index + 1}. ${slot.name} (${slot.type})`}
-                className={slot.id === selected?.id ? 'selected' : ''}
-                onClick={() => setSelectedId(slot.id)}
+                className={selectedKey === `slot:${slot.id}` ? 'selected' : ''}
+                onClick={() => setSelectedKey(`slot:${slot.id}`)}
               >
                 <span>{index + 1}. {slot.name}</span>
                 <small>{slot.type}</small>
               </button>
             ))}
+            {elements.length > 0 && <p className="scene-template-list-label">Da cena</p>}
+            {elements.map((element, index) => (
+              <button
+                key={element.id}
+                type="button"
+                aria-label={`${element.name} (${element.type})`}
+                className={selectedKey === `element:${element.id}` ? 'selected' : ''}
+                onClick={() => setSelectedKey(`element:${element.id}`)}
+              >
+                <span>{index + 1}. {element.name}</span>
+                <small>{element.type}</small>
+              </button>
+            ))}
           </aside>
 
-          <main className="scene-template-preview">
+          <main
+            className="scene-template-preview"
+            onPointerDown={handlePreviewPointerDown}
+            onPointerMove={handlePreviewPointerMove}
+            onPointerUp={handlePreviewPointerUp}
+            onPointerCancel={handlePreviewPointerUp}
+          >
             <TemplateRenderer
               markup={markup}
               contents={contents}
-              options={{ styleById }}
+              options={{
+                styleById,
+                additionalElements: elements,
+              }}
               className="scene-template-preview-document"
             />
           </main>
 
           <aside className="scene-template-properties">
-            {selected ? (
+            {(selectedSlot || selectedElement) ? (
               <>
                 <div className="scene-template-properties-title">
                   <div>
-                    <strong>{selected.name}</strong>
-                    <span>{selected.type} · {selected.id}</span>
+                    <strong>{selectedSlot?.name ?? selectedElement?.name}</strong>
+                    <span>{selectedType} · {selectedSlot?.id ?? selectedElement?.id}</span>
                   </div>
-                  <button type="button" onClick={() => onChange(selected.id, undefined)}>
-                    Restaurar
-                  </button>
+                  {selectedSlot ? (
+                    <button type="button" onClick={() => onChange(selectedSlot.id, undefined)}>Restaurar</button>
+                  ) : (
+                    <div className="scene-template-element-actions">
+                      <button type="button" onClick={duplicateElement}>Duplicar</button>
+                      <button type="button" onClick={removeElement}>Excluir</button>
+                    </div>
+                  )}
                 </div>
 
-                {selected.type === 'text' && (
+                {selectedElement && (
+                  <label>
+                    <span>Nome da camada</span>
+                    <input className="field" value={selectedElement.name} onChange={(event) => patchElement({ name: event.target.value })} />
+                  </label>
+                )}
+
+                {selectedType === 'text' && (
                   <label>
                     <span>Texto</span>
                     <textarea
                       className="field"
                       rows={4}
-                      value={override.text ?? ''}
-                      placeholder="Conteúdo automático da cena"
+                      value={value.text ?? ''}
+                      placeholder={selectedSlot ? 'Conteúdo automático da cena' : 'Digite o texto'}
                       onChange={(event) => patch({ text: event.target.value || undefined })}
                     />
                   </label>
                 )}
 
-                {selected.type === 'image' && (
+                {selectedType === 'image' && (
                   <>
                     <label>
                       <span>Imagem</span>
                       <select
                         className="field"
-                        value={override.imageHref ?? ''}
+                        value={value.imageHref ?? ''}
                         onChange={(event) => patch({ imageHref: event.target.value || undefined })}
                       >
-                        <option value="">Automática pela ordem</option>
+                        <option value="">{selectedSlot ? 'Automática pela ordem' : 'Sem imagem'}</option>
                         {imageOptions.map((item) => (
                           <option key={item.label} value={item.value}>{item.label}</option>
                         ))}
@@ -182,7 +481,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                       <span>Encaixe</span>
                       <select
                         className="field"
-                        value={override.imageFit ?? 'cover'}
+                        value={value.imageFit ?? 'cover'}
                         onChange={(event) => patch({ imageFit: event.target.value as 'cover' | 'contain' })}
                       >
                         <option value="cover">Preencher e cortar</option>
@@ -192,13 +491,11 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                   </>
                 )}
 
-                {selected.type === 'icon' && (
+                {selectedType === 'icon' && (
                   <>
                     <div className="scene-template-icon-presets">
                       {Object.entries(ICON_PRESETS).map(([name, svg]) => (
-                        <button key={name} type="button" onClick={() => patch({ iconSvg: svg })}>
-                          {name}
-                        </button>
+                        <button key={name} type="button" onClick={() => patch({ iconSvg: svg })}>{name}</button>
                       ))}
                     </div>
                     <label>
@@ -206,7 +503,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                       <textarea
                         className="field"
                         rows={5}
-                        value={override.iconSvg ?? ''}
+                        value={value.iconSvg ?? ''}
                         placeholder="<svg viewBox=&quot;0 0 24 24&quot;>…</svg>"
                         onChange={(event) => patch({ iconSvg: event.target.value || undefined })}
                       />
@@ -225,32 +522,77 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                   </>
                 )}
 
+                {selectedElement?.type === 'shape' && (
+                  <label>
+                    <span>Tipo de forma</span>
+                    <select
+                      className="field"
+                      value={selectedElement.shape ?? 'rectangle'}
+                      onChange={(event) => patchElement({ shape: event.target.value as SceneTemplateElement['shape'] })}
+                    >
+                      <option value="rectangle">Retângulo</option>
+                      <option value="pill">Cápsula</option>
+                      <option value="circle">Círculo / elipse</option>
+                      <option value="line">Linha</option>
+                    </select>
+                  </label>
+                )}
+
                 <div className="scene-template-section">
                   <strong>Posição e tamanho</strong>
                   <div className="scene-template-grid">
-                    <label><span>X</span><input type="number" step="1" value={override.translateX ?? 0} onChange={(event) => patch({ translateX: numberValue(event.target.value) })} /></label>
-                    <label><span>Y</span><input type="number" step="1" value={override.translateY ?? 0} onChange={(event) => patch({ translateY: numberValue(event.target.value) })} /></label>
-                    <label><span>Escala</span><input type="number" min="0.01" step="0.05" value={override.scale ?? 1} onChange={(event) => patch({ scale: numberValue(event.target.value) })} /></label>
-                    <label><span>Rotação</span><input type="number" step="1" value={override.rotation ?? 0} onChange={(event) => patch({ rotation: numberValue(event.target.value) })} /></label>
+                    {selectedElement ? (
+                      <>
+                        <label><span>X</span><input type="number" step="1" value={selectedElement.x} onChange={(event) => patchElement({ x: numberValue(event.target.value) ?? 0 })} /></label>
+                        <label><span>Y</span><input type="number" step="1" value={selectedElement.y} onChange={(event) => patchElement({ y: numberValue(event.target.value) ?? 0 })} /></label>
+                        <label><span>Largura</span><input type="number" min="1" step="1" value={selectedElement.width} onChange={(event) => patchElement({ width: Math.max(1, numberValue(event.target.value) ?? 1) })} /></label>
+                        <label><span>Altura</span><input type="number" min="1" step="1" value={selectedElement.height} onChange={(event) => patchElement({ height: Math.max(1, numberValue(event.target.value) ?? 1) })} /></label>
+                        <label><span>Rotação</span><input type="number" step="1" value={selectedElement.rotation ?? 0} onChange={(event) => patchElement({ rotation: numberValue(event.target.value) })} /></label>
+                      </>
+                    ) : (
+                      <>
+                        <label><span>X</span><input type="number" step="1" value={override.translateX ?? 0} onChange={(event) => patchSlot({ translateX: numberValue(event.target.value) })} /></label>
+                        <label><span>Y</span><input type="number" step="1" value={override.translateY ?? 0} onChange={(event) => patchSlot({ translateY: numberValue(event.target.value) })} /></label>
+                        <label><span>Escala</span><input type="number" min="0.01" step="0.05" value={override.scale ?? 1} onChange={(event) => patchSlot({ scale: numberValue(event.target.value) })} /></label>
+                        <label><span>Rotação</span><input type="number" step="1" value={override.rotation ?? 0} onChange={(event) => patchSlot({ rotation: numberValue(event.target.value) })} /></label>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 <div className="scene-template-section">
                   <strong>Aparência</strong>
                   <div className="scene-template-grid">
-                    <label><span>Opacidade</span><input type="number" min="0" max="1" step="0.05" value={override.opacity ?? 1} onChange={(event) => patch({ opacity: numberValue(event.target.value) })} /></label>
-                    {selected.type !== 'image' && (
-                      <label><span>Cor</span><input type="color" value={override.fill ?? '#ffffff'} onChange={(event) => patch({ fill: event.target.value })} /></label>
+                    <label><span>Opacidade</span><input type="number" min="0" max="1" step="0.05" value={value.opacity ?? 1} onChange={(event) => patch({ opacity: numberValue(event.target.value) })} /></label>
+                    {selectedType !== 'image' && (
+                      <label><span>Cor</span><input type="color" value={value.fill ?? '#ffffff'} onChange={(event) => patch({ fill: event.target.value })} /></label>
                     )}
-                    {selected.type === 'text' && (
+                    {selectedElement?.type === 'shape' && (
                       <>
-                        <label><span>Tamanho</span><input type="number" min="1" value={override.fontSize ?? ''} placeholder="modelo" onChange={(event) => patch({ fontSize: numberValue(event.target.value) })} /></label>
-                        <label><span>Peso</span><input type="number" min="100" max="900" step="100" value={override.fontWeight ?? ''} placeholder="modelo" onChange={(event) => patch({ fontWeight: numberValue(event.target.value) })} /></label>
+                        <label><span>Contorno</span><input type="color" value={selectedElement.stroke ?? '#ffffff'} onChange={(event) => patchElement({ stroke: event.target.value })} /></label>
+                        <label><span>Espessura</span><input type="number" min="0" step="1" value={selectedElement.strokeWidth ?? 0} onChange={(event) => patchElement({ strokeWidth: numberValue(event.target.value) })} /></label>
+                        <label><span>Arredondamento</span><input type="number" min="0" step="1" value={selectedElement.borderRadius ?? 0} onChange={(event) => patchElement({ borderRadius: numberValue(event.target.value) })} /></label>
+                      </>
+                    )}
+                    {selectedType === 'text' && (
+                      <>
+                        <label><span>Tamanho</span><input type="number" min="1" value={value.fontSize ?? ''} placeholder="modelo" onChange={(event) => patch({ fontSize: numberValue(event.target.value) })} /></label>
+                        <label><span>Peso</span><input type="number" min="100" max="900" step="100" value={value.fontWeight ?? ''} placeholder="modelo" onChange={(event) => patch({ fontWeight: numberValue(event.target.value) })} /></label>
+                        {selectedElement && (
+                          <label>
+                            <span>Alinhamento</span>
+                            <select className="field" value={selectedElement.textAlign ?? 'start'} onChange={(event) => patchElement({ textAlign: event.target.value as SceneTemplateElement['textAlign'] })}>
+                              <option value="start">Esquerda</option>
+                              <option value="middle">Centro</option>
+                              <option value="end">Direita</option>
+                            </select>
+                          </label>
+                        )}
                       </>
                     )}
                   </div>
                   <label className="scene-template-visible">
-                    <input type="checkbox" checked={!override.hidden} onChange={(event) => patch({ hidden: !event.target.checked })} />
+                    <input type="checkbox" checked={!value.hidden} onChange={(event) => patch({ hidden: !event.target.checked })} />
                     <span>Elemento visível</span>
                   </label>
                 </div>
@@ -258,13 +600,20 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                 <div className="scene-template-section">
                   <strong>Animação desta cena</strong>
                   <SlotAnimationEditor
-                    animation={override.animation === null ? undefined : override.animation ?? selected.animation}
+                    animation={
+                      value.animation === null
+                        ? undefined
+                        : value.animation ?? selectedSlot?.animation
+                    }
                     onChange={(animation) => patch({ animation: animation ?? null })}
                   />
                 </div>
               </>
             ) : (
-              <p>Nenhum elemento disponível.</p>
+              <div className="scene-template-selection-empty">
+                <strong>Adicione ou selecione um elemento</strong>
+                <span>Use os botões acima para inserir textos, imagens, ícones, formas ou blocos prontos.</span>
+              </div>
             )}
           </aside>
         </div>
@@ -275,6 +624,8 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
             className="btn btn-ghost"
             onClick={() => {
               for (const slot of slots) onChange(slot.id, undefined);
+              onElementsChange([]);
+              setSelectedKey(slots[0] ? `slot:${slots[0].id}` : '');
             }}
           >
             Restaurar cena

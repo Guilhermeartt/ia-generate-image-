@@ -1,5 +1,11 @@
 import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
-import type { Character, Scene, SceneReference, SceneTemplateSlotOverride } from '../types';
+import type {
+  Character,
+  Scene,
+  SceneReference,
+  SceneTemplateElement,
+  SceneTemplateSlotOverride,
+} from '../types';
 import { SparklesIcon } from './icons';
 import ImageEditModal from './ImageEditModal';
 import SceneReferencesPanel from './SceneReferencesPanel';
@@ -75,6 +81,7 @@ interface SceneCardProps {
   onSceneReferencesChange?: (id: number, updater: (current: SceneReference[] | undefined) => SceneReference[] | undefined) => void;
   onSceneTemplateChange?: (id: number, templateId: string | undefined) => void;
   onSceneTemplateOverrideChange?: (id: number, slotId: string, override: SceneTemplateSlotOverride | undefined) => void;
+  onSceneTemplateElementsChange?: (id: number, elements: SceneTemplateElement[]) => void;
 }
 
 const sceneArePropsEqual = (prev: SceneCardProps, next: SceneCardProps) => (
@@ -98,6 +105,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
     onOpenGraphicStyle, onClearGraphicStyle,
     onIncludeLetteringChange, onSceneReferencesChange, onSceneTemplateChange,
     onSceneTemplateOverrideChange,
+    onSceneTemplateElementsChange,
   } = props;
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -247,7 +255,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
                 onChange={(templateId) => onSceneTemplateChange(scene.id, templateId)}
               />
             )}
-            {onSceneTemplateOverrideChange && scene.templateId && templateSlots.length > 0 && (
+            {onSceneTemplateOverrideChange && scene.templateId && templateMarkup && (
               <SceneTemplateOverrides
                 scene={scene}
                 slots={templateSlots}
@@ -566,7 +574,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
         />
       )}
 
-      {isTemplateEditorOpen && templateMarkup && onSceneTemplateOverrideChange && (
+      {isTemplateEditorOpen && templateMarkup && onSceneTemplateOverrideChange && onSceneTemplateElementsChange && (
         <SceneTemplateEditorModal
           scene={scene}
           markup={templateMarkup}
@@ -575,6 +583,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
           onChange={(slotId, override) =>
             onSceneTemplateOverrideChange(scene.id, slotId, override)
           }
+          onElementsChange={(elements) => onSceneTemplateElementsChange(scene.id, elements)}
         />
       )}
     </>

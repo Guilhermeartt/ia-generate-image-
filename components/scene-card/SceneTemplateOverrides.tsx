@@ -95,7 +95,7 @@ const SceneTemplateOverrides: React.FC<SceneTemplateOverridesProps> = ({
         onClick={onEdit}
         style={{ fontSize: 11, width: '100%' }}
       >
-        Editar composição ({slots.length})
+        Editar composição ({slots.length + (scene.templateElements?.length ?? 0)})
       </button>
 
       {textSlots.length > 0 && <button

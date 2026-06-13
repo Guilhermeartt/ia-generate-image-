@@ -37,6 +37,16 @@ describe('createVideoScenes', () => {
     expect(result[1].templateId).toBeUndefined();
   });
 
+  it('propaga elementos adicionais da composição para o vídeo', () => {
+    const templateElements = [
+      { id: 'extra', type: 'text' as const, name: 'Título', x: 0, y: 0, width: 100, height: 30, text: 'Oi' },
+    ];
+    const result = createVideoScenes([
+      scene(1, { imageUrl: 'data:image/png;base64,main', templateId: 'tmpl_1', templateElements }),
+    ]);
+    expect(result[0].templateElements).toEqual(templateElements);
+  });
+
   it('uses the first generated split when a scene has no main image', () => {
     const result = createVideoScenes([
       scene(1, {

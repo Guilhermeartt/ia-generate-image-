@@ -34,6 +34,7 @@ const scene = {
 describe('SceneTemplateEditorModal', () => {
   it('lista e permite editar qualquer quantidade de slots por id', () => {
     const onChange = vi.fn();
+    const onElementsChange = vi.fn();
     render(
       <SceneTemplateEditorModal
         scene={scene}
@@ -41,6 +42,7 @@ describe('SceneTemplateEditorModal', () => {
         slots={slots}
         onClose={vi.fn()}
         onChange={onChange}
+        onElementsChange={onElementsChange}
       />,
     );
 
@@ -57,5 +59,18 @@ describe('SceneTemplateEditorModal', () => {
       'icon-b',
       expect.objectContaining({ iconSvg: expect.stringContaining('<svg') }),
     );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Texto' }));
+    expect(onElementsChange).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'text', text: 'Novo texto' }),
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lower third' }));
+    expect(onElementsChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ type: 'shape', name: 'Barra inferior' }),
+      expect.objectContaining({ type: 'shape', name: 'Destaque' }),
+      expect.objectContaining({ type: 'text', name: 'Nome' }),
+      expect.objectContaining({ type: 'text', name: 'Descrição' }),
+    ]);
   });
 });
