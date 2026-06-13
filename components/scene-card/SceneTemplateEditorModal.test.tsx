@@ -2,7 +2,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { Scene } from '../../types';
+import type { Scene, SceneTemplateElement } from '../../types';
 import type { TemplateSlot } from '../svg-editor/types';
 import SceneTemplateEditorModal from './SceneTemplateEditorModal';
 
@@ -60,6 +60,12 @@ describe('SceneTemplateEditorModal', () => {
       expect.objectContaining({ iconSvg: expect.stringContaining('<svg') }),
     );
 
+    fireEvent.click(screen.getByRole('button', { name: '1. Título (text)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicar Título' }));
+    expect(onElementsChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ type: 'text', name: 'Título cópia', text: 'Texto principal' }),
+    ]);
+
     fireEvent.click(screen.getByRole('button', { name: 'Texto' }));
     expect(onElementsChange).toHaveBeenCalledWith([
       expect.objectContaining({ type: 'text', text: 'Novo texto' }),
@@ -72,5 +78,83 @@ describe('SceneTemplateEditorModal', () => {
       expect.objectContaining({ type: 'text', name: 'Nome' }),
       expect.objectContaining({ type: 'text', name: 'Descrição' }),
     ]);
+  });
+
+  it('organiza camadas e duplica textos e imagens', () => {
+    const initialElements: SceneTemplateElement[] = [
+      {
+        id: 'text-extra', type: 'text' as const, name: 'Texto extra',
+        x: 10, y: 10, width: 100, height: 30, text: 'Oi',
+      },
+      {
+        id: 'image-extra', type: 'image' as const, name: 'Imagem extra',
+        x: 20, y: 50, width: 100, height: 80, imageHref: 'data:image/png;base64,aA==',
+      },
+    ];
+
+    const Harness = () => {
+      const [elements, setElements] = React.useState(initialElements);
+      return (
+        <SceneTemplateEditorModal
+          scene={{ ...scene, templateElements: elements }}
+          markup={markup}
+          slots={slots}
+          onClose={vi.fn()}
+          onChange={vi.fn()}
+          onElementsChange={setElements}
+        />
+      );
+    };
+
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicar Texto extra' }));
+    expect(screen.getByRole('button', { name: 'Texto extra cópia (text)' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicar Imagem extra' }));
+    expect(screen.getByRole('button', { name: 'Imagem extra cópia (image)' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar Imagem extra para trás' }));
+    expect(screen.getByText('image · camada 1')).toBeInTheDocument();
+  });
+
+  it('vincula um shape como máscara e o oculta automaticamente', () => {
+    const initialElements: SceneTemplateElement[] = [
+      {
+        id: 'shape-mask', type: 'shape' as const, name: 'Shape máscara',
+        x: 30, y: 40, width: 80, height: 80, shape: 'circle' as const,
+      },
+      {
+        id: 'image-mask', type: 'image' as const, name: 'Imagem mascarada',
+        x: 0, y: 0, width: 100, height: 100, imageHref: 'data:image/png;base64,aA==',
+      },
+    ];
+
+    const Harness = () => {
+      const [elements, setElements] = React.useState(initialElements);
+      return (
+        <>
+          <span data-testid="state">{JSON.stringify(elements)}</span>
+          <SceneTemplateEditorModal
+            scene={{ ...scene, templateElements: elements }}
+            markup={markup}
+            slots={slots}
+            onClose={vi.fn()}
+            onChange={vi.fn()}
+            onElementsChange={setElements}
+          />
+        </>
+      );
+    };
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Imagem mascarada (image)' }));
+    const maskSelectors = screen.getAllByLabelText('Usar shape da cena como máscara');
+    fireEvent.change(maskSelectors[maskSelectors.length - 1], {
+      target: { value: 'shape-mask' },
+    });
+
+    expect(screen.getByTestId('state').textContent).toContain('"maskElementId":"shape-mask"');
+    expect(screen.getByTestId('state').textContent).toContain('"hidden":true');
   });
 });

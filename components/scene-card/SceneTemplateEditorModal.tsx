@@ -223,16 +223,76 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     onElementsChange(elements.filter((element) => element.id !== selectedElement.id));
     setSelectedKey(slots[0] ? `slot:${slots[0].id}` : '');
   };
-  const duplicateElement = () => {
-    if (!selectedElement) return;
+  const duplicateElementById = (elementId: string) => {
+    const source = elements.find((element) => element.id === elementId);
+    if (!source) return;
     const copy = {
-      ...selectedElement,
+      ...source,
       id: createId(),
-      name: `${selectedElement.name} cópia`,
-      x: selectedElement.x + 18,
-      y: selectedElement.y + 18,
+      name: `${source.name} cópia`,
+      x: source.x + 18,
+      y: source.y + 18,
     };
     addElements([copy]);
+  };
+  const duplicateElement = () => {
+    if (selectedElement) duplicateElementById(selectedElement.id);
+  };
+  const duplicateSlot = () => {
+    if (!selectedSlot) return;
+    const content = contents.find((item) => item.id === selectedSlot.id);
+    const defaultWidth = dimensions.width * (selectedSlot.type === 'icon' ? 0.08 : 0.34);
+    const defaultHeight = dimensions.height * (selectedSlot.type === 'text' ? 0.09 : 0.2);
+    const width = selectedSlot.bounds.width || defaultWidth;
+    const height = selectedSlot.bounds.height || defaultHeight;
+    const base = {
+      id: createId(),
+      type: selectedSlot.type,
+      name: `${selectedSlot.name} cópia`,
+      x: selectedSlot.bounds.x + 18,
+      y: selectedSlot.bounds.y + 18,
+      width,
+      height,
+      fill: override.fill,
+      fontFamily: override.fontFamily,
+      fontSize: override.fontSize,
+      fontWeight: override.fontWeight,
+      opacity: override.opacity,
+      animation: override.animation ?? selectedSlot.animation,
+    } satisfies SceneTemplateElement;
+    const copy: SceneTemplateElement = content?.type === 'text'
+      ? { ...base, type: 'text', text: content.value }
+      : content?.type === 'image'
+        ? { ...base, type: 'image', imageHref: content.href, imageFit: content.fit }
+        : {
+            ...base,
+            type: 'icon',
+            iconSvg: content?.type === 'icon' ? content.svg : override.iconSvg ?? ICON_PRESETS.estrela,
+          };
+    addElements([copy]);
+  };
+  const moveElement = (
+    elementId: string,
+    direction: 'forward' | 'backward' | 'front' | 'back',
+  ) => {
+    const index = elements.findIndex((element) => element.id === elementId);
+    if (index < 0) return;
+    const next = [...elements];
+    const [element] = next.splice(index, 1);
+    const target = direction === 'front'
+      ? next.length
+      : direction === 'back'
+        ? 0
+        : direction === 'forward'
+          ? Math.min(next.length, index + 1)
+          : Math.max(0, index - 1);
+    next.splice(target, 0, element);
+    onElementsChange(next);
+  };
+  const toggleElementVisibility = (elementId: string) => {
+    onElementsChange(elements.map((element) => (
+      element.id === elementId ? { ...element, hidden: !element.hidden } : element
+    )));
   };
 
   const imageOptions = useMemo(
@@ -381,18 +441,32 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
               </button>
             ))}
             {elements.length > 0 && <p className="scene-template-list-label">Da cena</p>}
-            {elements.map((element, index) => (
-              <button
+            {[...elements].reverse().map((element, reversedIndex) => {
+              const index = elements.length - 1 - reversedIndex;
+              return (
+              <div
                 key={element.id}
-                type="button"
-                aria-label={`${element.name} (${element.type})`}
-                className={selectedKey === `element:${element.id}` ? 'selected' : ''}
-                onClick={() => setSelectedKey(`element:${element.id}`)}
+                className={`scene-template-layer-row${selectedKey === `element:${element.id}` ? ' selected' : ''}`}
               >
-                <span>{index + 1}. {element.name}</span>
-                <small>{element.type}</small>
-              </button>
-            ))}
+                <button
+                  type="button"
+                  className="scene-template-layer-main"
+                  aria-label={`${element.name} (${element.type})`}
+                  onClick={() => setSelectedKey(`element:${element.id}`)}
+                >
+                  <span>{element.name}</span>
+                  <small>{element.type} · camada {index + 1}</small>
+                </button>
+                <div className="scene-template-layer-actions">
+                  <button type="button" title={element.hidden ? 'Mostrar' : 'Ocultar'} aria-label={`${element.hidden ? 'Mostrar' : 'Ocultar'} ${element.name}`} onClick={() => toggleElementVisibility(element.id)}>
+                    {element.hidden ? '○' : '●'}
+                  </button>
+                  <button type="button" title="Duplicar" aria-label={`Duplicar ${element.name}`} onClick={() => duplicateElementById(element.id)}>⧉</button>
+                  <button type="button" title="Trazer para frente" aria-label={`Trazer ${element.name} para frente`} disabled={index === elements.length - 1} onClick={() => moveElement(element.id, 'forward')}>↑</button>
+                  <button type="button" title="Enviar para trás" aria-label={`Enviar ${element.name} para trás`} disabled={index === 0} onClick={() => moveElement(element.id, 'backward')}>↓</button>
+                </div>
+              </div>
+            )})}
           </aside>
 
           <main
@@ -422,9 +496,14 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                     <span>{selectedType} · {selectedSlot?.id ?? selectedElement?.id}</span>
                   </div>
                   {selectedSlot ? (
-                    <button type="button" onClick={() => onChange(selectedSlot.id, undefined)}>Restaurar</button>
+                    <div className="scene-template-element-actions">
+                      <button type="button" aria-label={`Duplicar ${selectedSlot.name}`} onClick={duplicateSlot}>Duplicar</button>
+                      <button type="button" onClick={() => onChange(selectedSlot.id, undefined)}>Restaurar</button>
+                    </div>
                   ) : (
                     <div className="scene-template-element-actions">
+                      <button type="button" onClick={() => moveElement(selectedElement!.id, 'front')}>Topo</button>
+                      <button type="button" onClick={() => moveElement(selectedElement!.id, 'back')}>Fundo</button>
                       <button type="button" onClick={duplicateElement}>Duplicar</button>
                       <button type="button" onClick={removeElement}>Excluir</button>
                     </div>
@@ -488,6 +567,65 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                         <option value="contain">Mostrar inteira</option>
                       </select>
                     </label>
+                    {selectedElement && (
+                      <>
+                        <label>
+                          <span>Máscara rápida</span>
+                          <select
+                            className="field"
+                            value={selectedElement.imageMask ?? 'rectangle'}
+                            onChange={(event) => patchElement({
+                              imageMask: event.target.value as SceneTemplateElement['imageMask'],
+                              maskElementId: undefined,
+                            })}
+                          >
+                            <option value="rectangle">Retângulo</option>
+                            <option value="rounded">Retângulo arredondado</option>
+                            <option value="circle">Círculo</option>
+                            <option value="ellipse">Elipse</option>
+                            <option value="triangle">Triângulo</option>
+                            <option value="star">Estrela</option>
+                            <option value="hexagon">Hexágono</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Usar shape da cena como máscara</span>
+                          <select
+                            className="field"
+                            value={selectedElement.maskElementId ?? ''}
+                            onChange={(event) => {
+                              const maskElementId = event.target.value || undefined;
+                              const mask = elements.find((element) => element.id === maskElementId);
+                              if (mask?.type === 'shape') {
+                                onElementsChange(elements.map((element) => {
+                                  if (element.id === selectedElement.id) {
+                                    return {
+                                      ...element,
+                                      maskElementId,
+                                      x: mask.x,
+                                      y: mask.y,
+                                      width: mask.width,
+                                      height: mask.height,
+                                      rotation: 0,
+                                    };
+                                  }
+                                  return element.id === mask.id ? { ...element, hidden: true } : element;
+                                }));
+                              } else {
+                                patchElement({ maskElementId });
+                              }
+                            }}
+                          >
+                            <option value="">Nenhum shape vinculado</option>
+                            {elements
+                              .filter((element) => element.type === 'shape' && element.shape !== 'line')
+                              .map((element) => (
+                                <option key={element.id} value={element.id}>{element.name}</option>
+                              ))}
+                          </select>
+                        </label>
+                      </>
+                    )}
                   </>
                 )}
 

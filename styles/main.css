@@ -305,7 +305,7 @@
         background: var(--surface-2);
       }
       .scene-template-slot-list { border-right: 1px solid var(--border); }
-      .scene-template-slot-list button {
+      .scene-template-slot-list > button {
         width: 100%;
         display: flex;
         align-items: center;
@@ -319,13 +319,69 @@
         text-align: left;
         cursor: pointer;
       }
-      .scene-template-slot-list button:hover,
-      .scene-template-slot-list button.selected {
+      .scene-template-slot-list > button:hover,
+      .scene-template-slot-list > button.selected {
         border-color: var(--border-md);
         background: var(--surface);
       }
-      .scene-template-slot-list button.selected { box-shadow: inset 3px 0 0 var(--indigo); }
+      .scene-template-slot-list > button.selected { box-shadow: inset 3px 0 0 var(--indigo); }
       .scene-template-slot-list small { color: var(--text-4); font-size: 9px; text-transform: uppercase; }
+      .scene-template-layer-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 3px;
+        margin-bottom: 3px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+      }
+      .scene-template-layer-row:hover,
+      .scene-template-layer-row.selected {
+        border-color: var(--border-md);
+        background: var(--surface);
+      }
+      .scene-template-layer-row.selected { box-shadow: inset 3px 0 0 var(--indigo); }
+      .scene-template-layer-main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1px;
+        padding: 8px;
+        border: 0;
+        background: transparent;
+        color: var(--text-2);
+        text-align: left;
+        cursor: pointer;
+      }
+      .scene-template-layer-main span {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .scene-template-layer-actions {
+        display: grid;
+        grid-template-columns: repeat(2, 22px);
+        gap: 2px;
+        padding-right: 4px;
+      }
+      .scene-template-layer-actions button {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--text-4);
+        font-size: 10px;
+        cursor: pointer;
+      }
+      .scene-template-layer-actions button:hover:not(:disabled) {
+        border-color: var(--border);
+        color: var(--text-1);
+      }
+      .scene-template-layer-actions button:disabled { opacity: .25; cursor: default; }
       .scene-template-list-label {
         margin: 10px 8px 5px;
         color: var(--text-4);

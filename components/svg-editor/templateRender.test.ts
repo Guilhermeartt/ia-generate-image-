@@ -162,4 +162,52 @@ describe('renderTemplate', () => {
     expect(group?.getAttribute('style')).toContain('opacity:0.5');
     expect(group?.getAttribute('style')).toContain('translate(20px, 0px)');
   });
+
+  it('aplica máscaras geométricas rápidas em imagens', () => {
+    const out = renderTemplate(createBlankSvg(), [], {
+      additionalElements: [
+        {
+          id: 'star-image', type: 'image', name: 'Estrela', x: 10, y: 20,
+          width: 120, height: 120, imageHref: 'data:image/png;base64,aA==', imageMask: 'star',
+        },
+        {
+          id: 'triangle-image', type: 'image', name: 'Triângulo', x: 150, y: 20,
+          width: 120, height: 120, imageHref: 'data:image/png;base64,Yg==', imageMask: 'triangle',
+        },
+      ],
+    });
+    const doc = parse(out);
+    const clips = doc.querySelectorAll('clipPath polygon');
+
+    expect(clips).toHaveLength(2);
+    expect(clips[0].getAttribute('points')?.split(' ')).toHaveLength(10);
+    expect(clips[1].getAttribute('points')?.split(' ')).toHaveLength(3);
+  });
+
+  it('usa um shape da cena como máscara e preserva a ordem das camadas', () => {
+    const out = renderTemplate(createBlankSvg(), [], {
+      additionalElements: [
+        {
+          id: 'mask-shape', type: 'shape', name: 'Máscara', x: 30, y: 40,
+          width: 160, height: 100, shape: 'circle', hidden: true,
+        },
+        {
+          id: 'masked-image', type: 'image', name: 'Foto', x: 30, y: 40,
+          width: 160, height: 100, imageHref: 'data:image/png;base64,aA==',
+          maskElementId: 'mask-shape',
+        },
+        {
+          id: 'front-text', type: 'text', name: 'Frente', x: 30, y: 40,
+          width: 160, height: 40, text: 'Na frente',
+        },
+      ],
+    });
+    const doc = parse(out);
+    const mask = doc.querySelector('clipPath ellipse');
+    const layers = Array.from(doc.querySelectorAll('[data-scene-element-id]'))
+      .map((element) => element.getAttribute('data-scene-element-id'));
+
+    expect(mask?.getAttribute('cx')).toBe('110');
+    expect(layers).toEqual(['mask-shape', 'masked-image', 'front-text']);
+  });
 });

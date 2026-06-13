@@ -452,6 +452,14 @@ export interface SceneTemplateSlotOverride {
 
 export type SceneTemplateElementType = 'text' | 'image' | 'icon' | 'shape';
 export type SceneTemplateShape = 'rectangle' | 'pill' | 'circle' | 'line';
+export type SceneTemplateImageMask =
+  | 'rectangle'
+  | 'rounded'
+  | 'circle'
+  | 'ellipse'
+  | 'triangle'
+  | 'star'
+  | 'hexagon';
 
 export interface SceneTemplateElement {
   id: string;
@@ -467,6 +475,10 @@ export interface SceneTemplateElement {
   text?: string;
   imageHref?: string;
   imageFit?: 'cover' | 'contain';
+  /** Máscara geométrica rápida aplicada à imagem. */
+  imageMask?: SceneTemplateImageMask;
+  /** Shape da própria cena usado como máscara da imagem. */
+  maskElementId?: string;
   iconSvg?: string;
   shape?: SceneTemplateShape;
   fill?: string;

@@ -231,9 +231,105 @@ const styleToCss = (style: SlotStyle): string => {
 const safeImageHref = (href: string): string =>
   /^(data:image\/(?:png|jpe?g|gif|webp|bmp)[;,]|blob:|https?:)/i.test(href.trim()) ? href : '';
 
+const buildShapeNode = (
+  doc: XMLDocument,
+  element: Pick<
+    SceneTemplateElement,
+    'x' | 'y' | 'width' | 'height' | 'shape' | 'borderRadius'
+  >,
+): Element => {
+  if (element.shape === 'circle') {
+    const ellipse = doc.createElementNS(SVG_NS, 'ellipse');
+    ellipse.setAttribute('cx', String(element.x + element.width / 2));
+    ellipse.setAttribute('cy', String(element.y + element.height / 2));
+    ellipse.setAttribute('rx', String(element.width / 2));
+    ellipse.setAttribute('ry', String(element.height / 2));
+    return ellipse;
+  }
+  if (element.shape === 'line') {
+    const line = doc.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', String(element.x));
+    line.setAttribute('y1', String(element.y + element.height / 2));
+    line.setAttribute('x2', String(element.x + element.width));
+    line.setAttribute('y2', String(element.y + element.height / 2));
+    return line;
+  }
+  const rect = doc.createElementNS(SVG_NS, 'rect');
+  rect.setAttribute('x', String(element.x));
+  rect.setAttribute('y', String(element.y));
+  rect.setAttribute('width', String(element.width));
+  rect.setAttribute('height', String(element.height));
+  const radius = element.shape === 'pill' ? element.height / 2 : element.borderRadius ?? 0;
+  if (radius > 0) rect.setAttribute('rx', String(radius));
+  return rect;
+};
+
+const polygonPoints = (
+  count: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  innerRatio?: number,
+): string => {
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const rx = width / 2;
+  const ry = height / 2;
+  const total = innerRatio ? count * 2 : count;
+  return Array.from({ length: total }, (_, index) => {
+    const inner = innerRatio && index % 2 === 1;
+    const radiusX = inner ? rx * innerRatio : rx;
+    const radiusY = inner ? ry * innerRatio : ry;
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / total;
+    return `${cx + Math.cos(angle) * radiusX},${cy + Math.sin(angle) * radiusY}`;
+  }).join(' ');
+};
+
+const buildImageMaskNode = (
+  doc: XMLDocument,
+  image: SceneTemplateElement,
+  elementsById: Map<string, SceneTemplateElement>,
+): Element | null => {
+  const source = image.maskElementId ? elementsById.get(image.maskElementId) : undefined;
+  if (source?.type === 'shape' && source.shape !== 'line') {
+    const node = buildShapeNode(doc, source);
+    if (source.rotation) {
+      node.setAttribute(
+        'transform',
+        `rotate(${source.rotation} ${source.x + source.width / 2} ${source.y + source.height / 2})`,
+      );
+    }
+    return node;
+  }
+
+  const mask = image.imageMask ?? (image.borderRadius ? 'rounded' : 'rectangle');
+  if (mask === 'circle' || mask === 'ellipse') {
+    return buildShapeNode(doc, { ...image, shape: 'circle' });
+  }
+  if (mask === 'triangle' || mask === 'star' || mask === 'hexagon') {
+    const polygon = doc.createElementNS(SVG_NS, 'polygon');
+    polygon.setAttribute(
+      'points',
+      mask === 'triangle'
+        ? polygonPoints(3, image.x, image.y, image.width, image.height)
+        : mask === 'hexagon'
+          ? polygonPoints(6, image.x, image.y, image.width, image.height)
+          : polygonPoints(5, image.x, image.y, image.width, image.height, 0.44),
+    );
+    return polygon;
+  }
+  return buildShapeNode(doc, {
+    ...image,
+    shape: mask === 'rounded' ? 'rectangle' : 'rectangle',
+    borderRadius: mask === 'rounded' ? image.borderRadius ?? Math.min(image.width, image.height) * 0.12 : 0,
+  });
+};
+
 const appendAdditionalElement = (
   doc: XMLDocument,
   element: SceneTemplateElement,
+  elementsById: Map<string, SceneTemplateElement>,
   style?: SlotStyle,
 ): void => {
   const wrapper = doc.createElementNS(SVG_NS, 'g');
@@ -279,20 +375,21 @@ const appendAdditionalElement = (
       'preserveAspectRatio',
       element.imageFit === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice',
     );
-    if ((element.borderRadius ?? 0) > 0) {
+    if (
+      (element.imageMask && element.imageMask !== 'rectangle')
+      || element.maskElementId
+      || (element.borderRadius ?? 0) > 0
+    ) {
       clipCounter += 1;
       const clipId = `scene-element-clip-${clipCounter}`;
       const clip = doc.createElementNS(SVG_NS, 'clipPath');
       clip.setAttribute('id', clipId);
-      const rect = doc.createElementNS(SVG_NS, 'rect');
-      rect.setAttribute('x', String(element.x));
-      rect.setAttribute('y', String(element.y));
-      rect.setAttribute('width', String(element.width));
-      rect.setAttribute('height', String(element.height));
-      rect.setAttribute('rx', String(element.borderRadius));
-      clip.appendChild(rect);
-      ensureDefs(doc).appendChild(clip);
-      node.setAttribute('clip-path', `url(#${clipId})`);
+      const maskNode = buildImageMaskNode(doc, element, elementsById);
+      if (maskNode) {
+        clip.appendChild(maskNode);
+        ensureDefs(doc).appendChild(clip);
+        node.setAttribute('clip-path', `url(#${clipId})`);
+      }
     }
   } else if (element.type === 'icon' && element.iconSvg) {
     const slot = doc.createElementNS(SVG_NS, 'rect');
@@ -307,29 +404,7 @@ const appendAdditionalElement = (
       fill: element.fill,
     });
   } else if (element.type === 'shape') {
-    if (element.shape === 'circle') {
-      node = doc.createElementNS(SVG_NS, 'ellipse');
-      node.setAttribute('cx', String(element.x + element.width / 2));
-      node.setAttribute('cy', String(element.y + element.height / 2));
-      node.setAttribute('rx', String(element.width / 2));
-      node.setAttribute('ry', String(element.height / 2));
-    } else if (element.shape === 'line') {
-      node = doc.createElementNS(SVG_NS, 'line');
-      node.setAttribute('x1', String(element.x));
-      node.setAttribute('y1', String(element.y + element.height / 2));
-      node.setAttribute('x2', String(element.x + element.width));
-      node.setAttribute('y2', String(element.y + element.height / 2));
-    } else {
-      node = doc.createElementNS(SVG_NS, 'rect');
-      node.setAttribute('x', String(element.x));
-      node.setAttribute('y', String(element.y));
-      node.setAttribute('width', String(element.width));
-      node.setAttribute('height', String(element.height));
-      const radius = element.shape === 'pill'
-        ? element.height / 2
-        : element.borderRadius ?? 0;
-      if (radius > 0) node.setAttribute('rx', String(radius));
-    }
+    node = buildShapeNode(doc, element);
     node.setAttribute('fill', element.shape === 'line' ? 'none' : element.fill ?? '#7f77dd');
     node.setAttribute('stroke', element.stroke ?? (element.shape === 'line' ? element.fill ?? '#ffffff' : 'none'));
     node.setAttribute('stroke-width', String(element.strokeWidth ?? (element.shape === 'line' ? 4 : 0)));
@@ -384,8 +459,10 @@ export const renderTemplate = (
     slot.parentNode.replaceChild(group, slot);
     group.appendChild(slot);
   }
-  for (const element of options?.additionalElements ?? []) {
-    appendAdditionalElement(doc, element, options?.additionalStyleById?.[element.id]);
+  const additionalElements = options?.additionalElements ?? [];
+  const elementsById = new Map(additionalElements.map((element) => [element.id, element]));
+  for (const element of additionalElements) {
+    appendAdditionalElement(doc, element, elementsById, options?.additionalStyleById?.[element.id]);
   }
   return serialize(doc);
 };
