@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SvgCamera, SvgTool } from './types';
-import { appendSvgElement } from './svgDocument';
+import { appendSvgElement, updateSvgElement } from './svgDocument';
+import { nearestInsertion, parsePolyline, serializePolyline, type PathPoint } from './svgPath';
 
 interface SvgCanvasProps {
   markup: string;
@@ -38,7 +39,8 @@ interface Gesture {
     | 'line'
     | 'freehand'
     | 'star'
-    | 'triangle';
+    | 'triangle'
+    | 'node';
   before: string;
   start: Point;
   id: string;
@@ -51,6 +53,17 @@ interface Gesture {
   center?: Point;
   centerScreen?: Point;
   startAngle?: number;
+  /** Índice do nó (âncora) sendo arrastado, para kind === 'node'. */
+  nodeIndex?: number;
+  /** Pontos do path no início do arrasto de nó, em coords locais. */
+  pathPoints?: PathPoint[];
+  pathClosed?: boolean;
+}
+
+/** Caneta em andamento (desenho clique-a-clique). */
+interface PenState {
+  id: string;
+  points: PathPoint[];
 }
 
 const EDITABLE_SELECTOR =
@@ -240,10 +253,12 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
+  const penRef = useRef<PenState | null>(null);
   const spacePressedRef = useRef(false);
   const panRef = useRef<{ start: Point; camera: SvgCamera } | null>(null);
   const [viewport, setViewport] = useState({ width: 1, height: 1 });
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
+  const [nodeHandles, setNodeHandles] = useState<Point[]>([]);
   const [isPanning, setIsPanning] = useState(false);
 
   const dimensions = viewBox ?? { width: 1280, height: 720 };
@@ -288,7 +303,43 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
     );
   }, [selectedId]);
 
+  // Path poligonal selecionado (M/L/Z) quando a ferramenta de nós está ativa.
+  const getEditablePath = useCallback((): SVGGraphicsElement | null => {
+    if (tool !== 'nodes' || !selectedId) return null;
+    const element = hostRef.current?.querySelector<SVGGraphicsElement>(`#${CSS.escape(selectedId)}`);
+    if (!element || element.localName !== 'path') return null;
+    return parsePolyline(element.getAttribute('d') || '') ? element : null;
+  }, [tool, selectedId]);
+
+  const refreshNodes = useCallback(() => {
+    const canvas = canvasRef.current;
+    const path = getEditablePath();
+    const ctm = path?.getScreenCTM();
+    if (!canvas || !path || !ctm) {
+      setNodeHandles([]);
+      return;
+    }
+    const parsed = parsePolyline(path.getAttribute('d') || '');
+    if (!parsed) {
+      setNodeHandles([]);
+      return;
+    }
+    const canvasRect = canvas.getBoundingClientRect();
+    setNodeHandles(
+      parsed.points.map((point) => {
+        const screen = pointThrough(point, ctm);
+        return { x: screen.x - canvasRect.left, y: screen.y - canvasRect.top };
+      }),
+    );
+  }, [getEditablePath]);
+
   useLayoutEffect(refreshSelection, [markup, camera, viewport, refreshSelection]);
+  useLayoutEffect(refreshNodes, [markup, camera, viewport, refreshNodes]);
+
+  // Sair da caneta encerra o desenho em andamento.
+  useEffect(() => {
+    if (tool !== 'pen') penRef.current = null;
+  }, [tool]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -329,6 +380,67 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
 
   const snapPoint = (point: Point): Point =>
     snapToGrid ? { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 } : point;
+
+  // Caneta: adiciona uma âncora; fecha o path ao clicar perto do primeiro ponto.
+  // Usa o DOM vivo como fonte de verdade (robusto a cliques rápidos, antes do
+  // re-render do React atualizar a prop `markup`).
+  const addPenPoint = (point: Point) => {
+    const svg = getSvg();
+    if (!svg) return;
+    const before = serializeCanvas() ?? markup;
+    const pen = penRef.current;
+    if (!pen) {
+      const appended = appendSvgElement(before, 'path', {
+        d: `M ${point.x} ${point.y}`,
+        fill: 'none',
+        stroke: '#534ab7',
+        'stroke-width': 2,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+      });
+      const created = new DOMParser()
+        .parseFromString(appended.markup, 'image/svg+xml')
+        .getElementById(appended.id);
+      if (created) svg.appendChild(document.importNode(created, true));
+      onCommit(before, appended.markup, 'Caneta', appended.id);
+      penRef.current = { id: appended.id, points: [point] };
+      return;
+    }
+    const live = svg.querySelector<SVGGraphicsElement>(`#${CSS.escape(pen.id)}`);
+    if (!live) {
+      penRef.current = null;
+      return;
+    }
+    const first = pen.points[0];
+    const closing =
+      pen.points.length >= 2 &&
+      Math.hypot(point.x - first.x, point.y - first.y) <
+        Math.min(dimensions.width, dimensions.height) * 0.018;
+    const points = closing ? pen.points : [...pen.points, point];
+    live.setAttribute('d', serializePolyline(points, closing));
+    const after = serializeCanvas();
+    if (after) onCommit(before, after, 'Caneta', pen.id);
+    penRef.current = closing ? null : { id: pen.id, points };
+  };
+
+  const handleDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (tool === 'nodes' && target.dataset.node !== undefined) {
+      const path = getEditablePath();
+      const parsed = path && parsePolyline(path.getAttribute('d') || '');
+      if (path && parsed && parsed.points.length > 2) {
+        const next = parsed.points.filter((_, index) => index !== Number(target.dataset.node));
+        onCommit(
+          markup,
+          updateSvgElement(markup, path.id, { d: serializePolyline(next, parsed.closed) }),
+          'Remover nó',
+          path.id,
+        );
+      }
+      return;
+    }
+    if (tool === 'pen') penRef.current = null;
+  };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button === 1 || spacePressedRef.current) {
@@ -379,7 +491,77 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
       return;
     }
 
+    // ── Nó (âncora) de um path: Alt+clique remove, clique-e-arrasta move ──
+    if (tool === 'nodes' && target.dataset.node !== undefined) {
+      const path = getEditablePath();
+      const parsed = path && parsePolyline(path.getAttribute('d') || '');
+      if (!path || !parsed) return;
+      const nodeIndex = Number(target.dataset.node);
+      if ((event.altKey || event.metaKey) && parsed.points.length > 2) {
+        const next = parsed.points.filter((_, index) => index !== nodeIndex);
+        onCommit(
+          markup,
+          updateSvgElement(markup, path.id, { d: serializePolyline(next, parsed.closed) }),
+          'Remover nó',
+          path.id,
+        );
+        return;
+      }
+      const ctm = path.getScreenCTM();
+      if (ctm) {
+        gestureRef.current = {
+          kind: 'node',
+          before: markup,
+          start: { x: event.clientX, y: event.clientY },
+          id: path.id,
+          points: [],
+          nodeIndex,
+          pathPoints: parsed.points,
+          pathClosed: parsed.closed,
+          elementInverse: ctm.inverse(),
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      return;
+    }
+
+    // ── Caneta: clique adiciona âncora ──
+    if (tool === 'pen') {
+      addPenPoint(point);
+      return;
+    }
+
     const editable = target.closest<SVGGraphicsElement>(EDITABLE_SELECTOR);
+
+    // ── Edição de nós: 1º clique seleciona o path; clicar no corpo dele adiciona um nó ──
+    if (tool === 'nodes') {
+      const path =
+        editable && editable.localName === 'path' && parsePolyline(editable.getAttribute('d') || '')
+          ? editable
+          : null;
+      if (!path) {
+        onSelect(editable?.id ?? null);
+        return;
+      }
+      if (path.id !== selectedId) {
+        onSelect(path.id);
+        return;
+      }
+      const parsed = parsePolyline(path.getAttribute('d') || '');
+      const insertion = parsed && nearestInsertion(parsed.points, parsed.closed, point);
+      if (parsed && insertion) {
+        const next = [...parsed.points];
+        next.splice(insertion.index, 0, insertion.point);
+        onCommit(
+          markup,
+          updateSvgElement(markup, path.id, { d: serializePolyline(next, parsed.closed) }),
+          'Adicionar nó',
+          path.id,
+        );
+      }
+      return;
+    }
+
     if (tool === 'select') {
       const locked = editable?.closest('[data-editor-locked="true"]');
       const id = locked ? null : editable?.id || null;
@@ -493,7 +675,22 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
     );
     if (!element) return;
 
-    if (gesture.kind === 'move' && gesture.originalMatrix && gesture.parentInverse) {
+    if (
+      gesture.kind === 'node' &&
+      gesture.pathPoints &&
+      gesture.nodeIndex !== undefined &&
+      gesture.elementInverse
+    ) {
+      const local = pointThrough({ x: event.clientX, y: event.clientY }, gesture.elementInverse);
+      const moved = snapToGrid
+        ? { x: Math.round(local.x / 10) * 10, y: Math.round(local.y / 10) * 10 }
+        : local;
+      const next = gesture.pathPoints.map((entry, index) =>
+        index === gesture.nodeIndex ? moved : entry,
+      );
+      element.setAttribute('d', serializePolyline(next, Boolean(gesture.pathClosed)));
+      refreshNodes();
+    } else if (gesture.kind === 'move' && gesture.originalMatrix && gesture.parentInverse) {
       const localDelta = vectorThrough(
         { x: event.clientX - gesture.start.x, y: event.clientY - gesture.start.y },
         gesture.parentInverse,
@@ -641,7 +838,9 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
           ? 'Redimensionar elemento'
           : gesture.kind === 'rotate'
             ? 'Rotacionar elemento'
-            : 'Criar elemento';
+            : gesture.kind === 'node'
+              ? 'Mover nó'
+              : 'Criar elemento';
     onCommit(gesture.before, after, label, gesture.id);
   };
 
@@ -665,6 +864,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
       onPointerLeave={() => onPointerPosition(null)}
       onPointerUp={finishGesture}
       onPointerCancel={finishGesture}
+      onDoubleClick={handleDoubleClick}
       onWheel={handleWheel}
     >
       <div className="svg-editor-model-size">
@@ -695,12 +895,25 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
             height: selectionRect.height,
           }}
         >
-          <span className="svg-editor-rotate-handle" data-rotate="true" />
-          {[0, 1, 2, 3].map((corner) => (
-            <span key={corner} data-resize={corner} className={`handle-${corner}`} />
-          ))}
+          {tool !== 'nodes' && (
+            <>
+              <span className="svg-editor-rotate-handle" data-rotate="true" />
+              {[0, 1, 2, 3].map((corner) => (
+                <span key={corner} data-resize={corner} className={`handle-${corner}`} />
+              ))}
+            </>
+          )}
         </div>
       )}
+      {tool === 'nodes' &&
+        nodeHandles.map((node, index) => (
+          <span
+            key={index}
+            data-node={index}
+            className="svg-editor-node-handle"
+            style={{ left: node.x, top: node.y }}
+          />
+        ))}
     </div>
   );
 };

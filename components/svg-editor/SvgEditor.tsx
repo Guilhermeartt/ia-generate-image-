@@ -366,6 +366,8 @@ const SvgEditor: React.FC = () => {
       }
       if (event.key === 'Delete' || event.key === 'Backspace') removeSelected();
       if (event.key.toLowerCase() === 'v') setTool('select');
+      if (event.key.toLowerCase() === 'b') setTool('pen');
+      if (event.key.toLowerCase() === 'n') setTool('nodes');
       if (event.key.toLowerCase() === 'r') setTool('rect');
       if (event.key.toLowerCase() === 'e') setTool('ellipse');
       if (event.key.toLowerCase() === 'l') setTool('line');

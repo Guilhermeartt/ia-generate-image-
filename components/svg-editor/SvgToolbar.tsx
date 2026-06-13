@@ -30,6 +30,10 @@ interface SvgToolbarProps {
 const GROUPS: Array<Array<{ id: SvgTool; label: string; icon: string }>> = [
   [{ id: 'select', label: 'Selecionar (V)', icon: '↖' }],
   [
+    { id: 'pen', label: 'Caneta (B)', icon: '✒' },
+    { id: 'nodes', label: 'Editar pontos (N)', icon: '◇' },
+  ],
+  [
     { id: 'rect', label: 'Retângulo (R)', icon: '□' },
     { id: 'ellipse', label: 'Elipse (E)', icon: '○' },
     { id: 'line', label: 'Linha (L)', icon: '╱' },

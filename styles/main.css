@@ -411,6 +411,20 @@
         height: 18px;
         background: #7f77dd;
       }
+      .svg-editor-node-handle {
+        position: absolute;
+        z-index: 6;
+        width: 11px;
+        height: 11px;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: #fff;
+        border: 1.5px solid #7f77dd;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+        cursor: grab;
+        pointer-events: auto;
+      }
+      .svg-editor-node-handle:hover { background: #7f77dd; }
       .svg-editor-properties {
         display: flex;
         flex-direction: column;

@@ -1,5 +1,7 @@
 export type SvgTool =
   | 'select'
+  | 'pen'
+  | 'nodes'
   | 'rect'
   | 'ellipse'
   | 'line'
