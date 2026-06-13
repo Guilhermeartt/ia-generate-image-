@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import type { Scene } from '../../types';
+import type { Scene, SceneTemplateSlotOverride } from '../../types';
 import type { TemplateSlot } from '../svg-editor/types';
 import { resolveSlotContents } from '../svg-editor/templateBinding';
 import { suggestTemplateBinding } from '../../services/geminiService';
@@ -8,7 +8,8 @@ interface SceneTemplateOverridesProps {
   scene: Scene;
   slots: TemplateSlot[];
   disabled?: boolean;
-  onChange: (slotId: string, override: { text?: string; imageHref?: string } | undefined) => void;
+  onChange: (slotId: string, override: SceneTemplateSlotOverride | undefined) => void;
+  onEdit: () => void;
 }
 
 /**
@@ -21,11 +22,18 @@ const SceneTemplateOverrides: React.FC<SceneTemplateOverridesProps> = ({
   slots,
   disabled,
   onChange,
+  onEdit,
 }) => {
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const textSlots = slots.filter((slot) => slot.type === 'text');
+  const patchText = (slotId: string, text: string | undefined) => {
+    const current = scene.templateOverrides?.[slotId] ?? {};
+    const next = { ...current, text };
+    if (text === undefined) delete next.text;
+    onChange(slotId, Object.keys(next).length ? next : undefined);
+  };
 
   // Valores automáticos (sem overrides) — usados como placeholder.
   const defaults = useMemo(() => {
@@ -35,8 +43,6 @@ const SceneTemplateOverrides: React.FC<SceneTemplateOverridesProps> = ({
     }
     return map;
   }, [slots, scene]);
-
-  if (textSlots.length === 0) return null;
 
   const handleSuggest = async () => {
     setSuggesting(true);
@@ -51,7 +57,7 @@ const SceneTemplateOverrides: React.FC<SceneTemplateOverridesProps> = ({
         },
       );
       for (const [slotId, text] of Object.entries(bindings)) {
-        if (text) onChange(slotId, { text });
+        if (text) patchText(slotId, text);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao sugerir textos.');
@@ -76,9 +82,7 @@ const SceneTemplateOverrides: React.FC<SceneTemplateOverridesProps> = ({
             disabled={disabled}
             value={scene.templateOverrides?.[slot.id]?.text ?? ''}
             placeholder={defaults[slot.id] ?? slot.name}
-            onChange={(event) =>
-              onChange(slot.id, event.target.value ? { text: event.target.value } : undefined)
-            }
+            onChange={(event) => patchText(slot.id, event.target.value || undefined)}
             style={{ fontSize: 11 }}
           />
         </label>
@@ -86,13 +90,23 @@ const SceneTemplateOverrides: React.FC<SceneTemplateOverridesProps> = ({
 
       <button
         type="button"
+        className="btn btn-primary"
+        disabled={disabled}
+        onClick={onEdit}
+        style={{ fontSize: 11, width: '100%' }}
+      >
+        Editar composição ({slots.length})
+      </button>
+
+      {textSlots.length > 0 && <button
+        type="button"
         className="btn btn-ghost"
         disabled={disabled || suggesting}
         onClick={() => void handleSuggest()}
         style={{ fontSize: 11, alignSelf: 'flex-start' }}
       >
         {suggesting ? 'Sugerindo…' : 'Sugerir textos (IA)'}
-      </button>
+      </button>}
       {error && (
         <span style={{ fontSize: 10, color: 'var(--amber, #d97706)' }}>{error}</span>
       )}

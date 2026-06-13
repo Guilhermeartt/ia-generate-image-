@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
-import { renderTemplate, type SlotContent } from './templateRender';
+import { renderTemplate, type RenderTemplateOptions, type SlotContent } from './templateRender';
 
 interface TemplateRendererProps {
   /** Markup do modelo (SVG sanitizado com slots marcados). */
   markup: string;
   /** Conteúdo resolvido por slot. */
   contents: SlotContent[];
+  options?: RenderTemplateOptions;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -19,16 +20,17 @@ interface TemplateRendererProps {
 const TemplateRenderer: React.FC<TemplateRendererProps> = ({
   markup,
   contents,
+  options,
   className,
   style,
 }) => {
   const composed = useMemo(() => {
     try {
-      return renderTemplate(markup, contents);
+      return renderTemplate(markup, contents, options);
     } catch {
       return markup;
     }
-  }, [markup, contents]);
+  }, [markup, contents, options]);
 
   return (
     <div className={className} style={style} dangerouslySetInnerHTML={{ __html: composed }} />

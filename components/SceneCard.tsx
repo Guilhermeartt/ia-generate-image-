@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useReducer, useRef } from 'react';
-import type { Character, Scene, SceneReference } from '../types';
+import React, { useCallback, useMemo, useReducer, useRef, useState } from 'react';
+import type { Character, Scene, SceneReference, SceneTemplateSlotOverride } from '../types';
 import { SparklesIcon } from './icons';
 import ImageEditModal from './ImageEditModal';
 import SceneReferencesPanel from './SceneReferencesPanel';
@@ -29,6 +29,7 @@ import SceneCardCostStrip from './scene-card/SceneCardCostStrip';
 import SceneCardImagePanel from './scene-card/SceneCardImagePanel';
 import SceneTemplateControl from './scene-card/SceneTemplateControl';
 import SceneTemplateOverrides from './scene-card/SceneTemplateOverrides';
+import SceneTemplateEditorModal from './scene-card/SceneTemplateEditorModal';
 import { useTemplateMarkup } from '../hooks/useTemplates';
 import { listSlots } from './svg-editor/svgDocument';
 import SceneCardEndFramePanel from './scene-card/SceneCardEndFramePanel';
@@ -73,7 +74,7 @@ interface SceneCardProps {
   onIncludeLetteringChange?: (id: number, include: boolean) => void;
   onSceneReferencesChange?: (id: number, updater: (current: SceneReference[] | undefined) => SceneReference[] | undefined) => void;
   onSceneTemplateChange?: (id: number, templateId: string | undefined) => void;
-  onSceneTemplateOverrideChange?: (id: number, slotId: string, override: { text?: string; imageHref?: string } | undefined) => void;
+  onSceneTemplateOverrideChange?: (id: number, slotId: string, override: SceneTemplateSlotOverride | undefined) => void;
 }
 
 const sceneArePropsEqual = (prev: SceneCardProps, next: SceneCardProps) => (
@@ -106,6 +107,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
     [templateMarkup],
   );
   const [state, dispatch] = useReducer(sceneCardReducer, initialSceneCardState);
+  const [isTemplateEditorOpen, setTemplateEditorOpen] = useState(false);
 
   const editImage = useEditImageOperation({
     editImageService,
@@ -253,6 +255,7 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
                 onChange={(slotId, override) =>
                   onSceneTemplateOverrideChange(scene.id, slotId, override)
                 }
+                onEdit={() => setTemplateEditorOpen(true)}
               />
             )}
           </div>
@@ -560,6 +563,18 @@ const SceneCard: React.FC<SceneCardProps> = (props) => {
           previousUrl={scene.previousImageUrl}
           currentUrl={scene.imageUrl}
           onClose={() => dispatch({ type: 'CLOSE_COMPARE' })}
+        />
+      )}
+
+      {isTemplateEditorOpen && templateMarkup && onSceneTemplateOverrideChange && (
+        <SceneTemplateEditorModal
+          scene={scene}
+          markup={templateMarkup}
+          slots={templateSlots}
+          onClose={() => setTemplateEditorOpen(false)}
+          onChange={(slotId, override) =>
+            onSceneTemplateOverrideChange(scene.id, slotId, override)
+          }
         />
       )}
     </>

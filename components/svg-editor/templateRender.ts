@@ -39,6 +39,7 @@ export interface SlotIconContent {
   type: 'icon';
   /** Markup `<svg>…</svg>` do ícone (será escalado para dentro do slot). */
   svg: string;
+  fill?: string;
 }
 
 export type SlotContent = SlotImageContent | SlotTextContent | SlotIconContent;
@@ -134,6 +135,7 @@ const buildImage = (doc: XMLDocument, slot: Element, content: SlotImageContent):
   // Mantém um transform do slot (caso o usuário tenha movido a forma).
   const transform = slot.getAttribute('transform');
   if (transform) image.setAttribute('transform', transform);
+  image.setAttribute('data-rendered-slot-id', content.id);
   return image;
 };
 
@@ -147,6 +149,7 @@ const buildText = (doc: XMLDocument, slot: Element, content: SlotTextContent): E
     if (content.fontFamily) text.setAttribute('font-family', content.fontFamily);
     if (content.fontWeight) text.setAttribute('font-weight', String(content.fontWeight));
     text.textContent = content.value;
+    text.setAttribute('data-rendered-slot-id', content.id);
     return text;
   }
   // Slot-forma (ex.: retângulo): cria um <text> centralizado nos limites.
@@ -169,6 +172,7 @@ const buildText = (doc: XMLDocument, slot: Element, content: SlotTextContent): E
   const transform = slot.getAttribute('transform');
   if (transform) text.setAttribute('transform', transform);
   text.textContent = content.value;
+  text.setAttribute('data-rendered-slot-id', content.id);
   return text;
 };
 
@@ -189,11 +193,13 @@ const buildIcon = (doc: XMLDocument, slot: Element, content: SlotIconContent): E
   nested.setAttribute('height', String(Math.max(0, bounds.height)));
   nested.setAttribute('viewBox', viewBox);
   nested.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  if (content.fill) nested.setAttribute('color', content.fill);
   for (const child of Array.from(iconDoc.documentElement.childNodes)) {
     nested.appendChild(doc.importNode(child, true));
   }
   const transform = slot.getAttribute('transform');
   if (transform) nested.setAttribute('transform', transform);
+  nested.setAttribute('data-rendered-slot-id', content.id);
   return nested;
 };
 
@@ -228,6 +234,7 @@ export const renderTemplate = (
   options?: RenderTemplateOptions,
 ): string => {
   const doc = parse(markup);
+  const renderedIds = new Set<string>();
   for (const content of contents) {
     const slot = doc.getElementById(content.id);
     if (!slot || !slot.parentNode) continue;
@@ -236,16 +243,29 @@ export const renderTemplate = (
     else if (content.type === 'text') replacement = buildText(doc, slot, content);
     else if (content.type === 'icon') replacement = buildIcon(doc, slot, content);
     if (!replacement) continue;
+    renderedIds.add(content.id);
 
     const style = options?.styleById?.[content.id];
     if (style) {
       const group = doc.createElementNS(SVG_NS, 'g');
+      group.setAttribute('data-rendered-slot-id', content.id);
       group.setAttribute('style', styleToCss(style));
       group.appendChild(replacement);
       slot.parentNode.replaceChild(group, slot);
     } else {
       slot.parentNode.replaceChild(replacement, slot);
     }
+  }
+
+  for (const [slotId, style] of Object.entries(options?.styleById ?? {})) {
+    if (renderedIds.has(slotId)) continue;
+    const slot = doc.getElementById(slotId);
+    if (!slot?.parentNode) continue;
+    const group = doc.createElementNS(SVG_NS, 'g');
+    group.setAttribute('data-rendered-slot-id', slotId);
+    group.setAttribute('style', styleToCss(style));
+    slot.parentNode.replaceChild(group, slot);
+    group.appendChild(slot);
   }
   return serialize(doc);
 };

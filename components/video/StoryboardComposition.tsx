@@ -11,6 +11,7 @@ import {
 } from 'remotion';
 import type {
   Scene,
+  SceneTemplateSlotOverride,
   SceneVideoLettering,
   VideoAudioTrack,
   VideoClipTransition,
@@ -20,9 +21,9 @@ import type {
 } from '@/types';
 import { placeClipsOnTimeline } from './videoScenes';
 import { listSlots } from '../svg-editor/svgDocument';
-import { resolveSlotContents } from '../svg-editor/templateBinding';
-import { slotStyleAtTime } from '../svg-editor/slotAnimation';
-import { renderTemplate, type SlotStyle } from '../svg-editor/templateRender';
+import { buildSceneSlotStyles, resolveSlotContents } from '../svg-editor/templateBinding';
+import { slotStyleAtTime, type EnterExitStyle } from '../svg-editor/slotAnimation';
+import { renderTemplate } from '../svg-editor/templateRender';
 
 export interface StoryboardVideoScene {
   id: string;
@@ -47,8 +48,8 @@ export interface StoryboardVideoScene {
   parentSceneDurationSeconds: number;
   /** Modelo de cena aplicado (id do template). Resolvido para markup via templateMarkups. */
   templateId?: string;
-  /** Overrides de conteúdo por slot (texto/imagem) definidos na cena. */
-  templateOverrides?: Record<string, { text?: string; imageHref?: string }>;
+  /** Instância editável do modelo para esta cena. */
+  templateOverrides?: Record<string, SceneTemplateSlotOverride>;
 }
 
 export interface StoryboardCompositionProps {
@@ -242,10 +243,13 @@ const ClipLayer: React.FC<ClipLayerProps> = ({
     } as unknown as Scene;
     const contents = resolveSlotContents(templateSlots, syntheticScene, clip.templateOverrides);
     const localTime = frame / fps;
-    const styleById: Record<string, SlotStyle> = {};
+    const animatedById: Record<string, EnterExitStyle> = {};
     for (const slot of templateSlots) {
-      if (slot.animation) styleById[slot.id] = slotStyleAtTime(slot.animation, localTime);
+      const animationOverride = clip.templateOverrides?.[slot.id]?.animation;
+      const animation = animationOverride === null ? undefined : animationOverride ?? slot.animation;
+      if (animation) animatedById[slot.id] = slotStyleAtTime(animation, localTime);
     }
+    const styleById = buildSceneSlotStyles(templateSlots, clip.templateOverrides, animatedById);
     return renderTemplate(templateMarkup, contents, { styleById });
   }, [templateMarkup, templateSlots, clip, frame, fps]);
 

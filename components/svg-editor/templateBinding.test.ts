@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '../../types';
 import type { TemplateSlot } from './types';
-import { buildPreviewContents, resolveSlotContents } from './templateBinding';
+import {
+  buildPreviewContents,
+  buildSceneSlotStyles,
+  resolveSlotContents,
+} from './templateBinding';
 
 const slot = (id: string, type: TemplateSlot['type'], name: string): TemplateSlot => ({
   id,
@@ -20,10 +24,21 @@ const scene = (over: Partial<Scene> = {}): Scene =>
   }) as unknown as Scene;
 
 describe('resolveSlotContents', () => {
-  it('liga a imagem principal ao primeiro slot de imagem e ignora os demais', () => {
-    const slots = [slot('a', 'image', 'capa'), slot('b', 'image', 'fundo')];
-    const contents = resolveSlotContents(slots, scene());
-    expect(contents).toEqual([{ id: 'a', type: 'image', href: 'IMG' }]);
+  it('distribui múltiplas imagens da cena entre múltiplos slots', () => {
+    const slots = [
+      slot('a', 'image', 'capa'),
+      slot('b', 'image', 'detalhe'),
+      slot('c', 'image', 'final'),
+    ];
+    const contents = resolveSlotContents(slots, scene({
+      splitImages: [{ id: 'split-1', prompt: '', imageUrl: 'SPLIT', imageMimeType: 'image/png' }],
+      endFrameUrl: 'END',
+    }));
+    expect(contents).toEqual([
+      { id: 'a', type: 'image', href: 'IMG', fit: undefined },
+      { id: 'b', type: 'image', href: 'SPLIT', fit: undefined },
+      { id: 'c', type: 'image', href: 'END', fit: undefined },
+    ]);
   });
 
   it('preenche slots de texto por prioridade: lettering, descrição, local', () => {
@@ -46,6 +61,18 @@ describe('resolveSlotContents', () => {
     expect(contents).toContainEqual({ id: 't1', type: 'text', value: 'Fixo' });
   });
 
+  it('resolve vários ícones de forma independente por id', () => {
+    const slots = [slot('i1', 'icon', 'estrela'), slot('i2', 'icon', 'seta')];
+    const contents = resolveSlotContents(slots, scene(), {
+      i1: { iconSvg: '<svg><path d="M0 0h1v1z"/></svg>', fill: '#ff0000' },
+      i2: { iconSvg: '<svg><circle cx="1" cy="1" r="1"/></svg>' },
+    });
+    expect(contents).toEqual([
+      { id: 'i1', type: 'icon', svg: '<svg><path d="M0 0h1v1z"/></svg>', fill: '#ff0000' },
+      { id: 'i2', type: 'icon', svg: '<svg><circle cx="1" cy="1" r="1"/></svg>', fill: undefined },
+    ]);
+  });
+
   it('não gera conteúdo de imagem quando a cena não tem imagem', () => {
     const slots = [slot('a', 'image', 'capa')];
     const contents = resolveSlotContents(slots, scene({ imageUrl: undefined }));
@@ -61,5 +88,28 @@ describe('buildPreviewContents', () => {
     expect((contents[0] as { href: string }).href).toContain('data:image/png;base64');
     expect(contents[1]).toEqual({ id: 't', type: 'text', value: 'Título' });
     expect(contents[2]).toMatchObject({ id: 'i', type: 'icon' });
+  });
+});
+
+describe('buildSceneSlotStyles', () => {
+  it('combina transformação, opacidade e animação por slot', () => {
+    const slots = [slot('a', 'text', 'Título'), slot('b', 'icon', 'Selo')];
+    const styles = buildSceneSlotStyles(
+      slots,
+      {
+        a: { translateX: 20, translateY: -4, scale: 1.2, rotation: 5, opacity: 0.8 },
+        b: { hidden: true },
+      },
+      {
+        a: { opacity: 0.5, transform: 'translate(0px, 10px)' },
+      },
+    );
+
+    expect(styles.a.opacity).toBeCloseTo(0.4);
+    expect(styles.a.transform).toContain('translate(20px, -4px)');
+    expect(styles.a.transform).toContain('rotate(5deg)');
+    expect(styles.a.transform).toContain('scale(1.2)');
+    expect(styles.a.transform).toContain('translate(0px, 10px)');
+    expect(styles.b.opacity).toBe(0);
   });
 });

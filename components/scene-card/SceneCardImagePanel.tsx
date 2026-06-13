@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import type { Scene } from '../../types';
 import { aspectRatioLabel, modelLabelShort } from '../../utils/imageHelpers';
 import { listSlots } from '../svg-editor/svgDocument';
-import { resolveSlotContents } from '../svg-editor/templateBinding';
+import { buildSceneSlotStyles, resolveSlotContents } from '../svg-editor/templateBinding';
 import TemplateRenderer from '../svg-editor/TemplateRenderer';
 import ImageLoader from '../ImageLoader';
 import Spinner from '../ui/Spinner';
@@ -69,6 +69,14 @@ const SceneCardImagePanel: React.FC<SceneCardImagePanelProps> = ({
       return null;
     }
   }, [templateMarkup, scene]);
+  const templateStyles = useMemo(() => {
+    if (!templateMarkup) return undefined;
+    try {
+      return buildSceneSlotStyles(listSlots(templateMarkup), scene.templateOverrides);
+    } catch {
+      return undefined;
+    }
+  }, [templateMarkup, scene.templateOverrides]);
 
   if (scene.imageUrl) {
     return (
@@ -83,6 +91,7 @@ const SceneCardImagePanel: React.FC<SceneCardImagePanelProps> = ({
             <TemplateRenderer
               markup={templateMarkup}
               contents={templateContents}
+              options={{ styleById: templateStyles }}
               className="sc-template-render"
               style={{ width: '100%', height: '100%', display: 'flex' }}
             />

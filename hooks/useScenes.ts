@@ -1,5 +1,12 @@
 import { useState, useCallback } from 'react';
-import type { Character, Scene, ImageModel, AppSettings, SceneReference } from '../types';
+import type {
+  AppSettings,
+  Character,
+  ImageModel,
+  Scene,
+  SceneReference,
+  SceneTemplateSlotOverride,
+} from '../types';
 import type { SplitImage } from '../types';
 
 // ── Construtor de instruções categorizadas para SceneReference ────────────────
@@ -900,16 +907,17 @@ export function useScenes({
   );
 
   const handleSceneTemplateChange = useCallback((id: number, templateId: string | undefined) => {
-    setScenes(prev => prev.map(s => (s.id === id ? { ...s, templateId } : s)));
+    setScenes(prev => prev.map(s => (
+      s.id === id ? { ...s, templateId, templateOverrides: undefined } : s
+    )));
   }, []);
 
   const handleSceneTemplateOverrideChange = useCallback(
-    (id: number, slotId: string, override: { text?: string; imageHref?: string } | undefined) => {
+    (id: number, slotId: string, override: SceneTemplateSlotOverride | undefined) => {
       setScenes(prev => prev.map(s => {
         if (s.id !== id) return s;
         const overrides = { ...(s.templateOverrides ?? {}) };
-        const clean = override && (override.text != null || override.imageHref != null) ? override : undefined;
-        if (clean) overrides[slotId] = clean;
+        if (override && Object.keys(override).length > 0) overrides[slotId] = override;
         else delete overrides[slotId];
         return { ...s, templateOverrides: Object.keys(overrides).length ? overrides : undefined };
       }));

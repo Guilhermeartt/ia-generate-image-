@@ -104,4 +104,18 @@ describe('renderTemplate', () => {
     expect(group?.getAttribute('style')).toContain('translate(0px, 10px)');
     expect(group?.querySelector('text')?.textContent).toBe('Oi');
   });
+
+  it('aplica estilo a um slot sem conteúdo substituto', () => {
+    const r = appendSvgElement(createBlankSvg(), 'rect', { x: 0, y: 0, width: 100, height: 80 });
+    const marked = markSlot(r.markup, r.id, { type: 'icon', name: 'grafismo' });
+
+    const out = renderTemplate(marked, [], {
+      styleById: { [r.id]: { opacity: 0, transform: 'translate(20px, 5px) scale(1.2)' } },
+    });
+    const group = parse(out).querySelector(`g[data-rendered-slot-id="${r.id}"]`);
+
+    expect(group?.getAttribute('style')).toContain('opacity:0');
+    expect(group?.getAttribute('style')).toContain('translate(20px, 5px)');
+    expect(group?.querySelector('rect')?.id).toBe(r.id);
+  });
 });

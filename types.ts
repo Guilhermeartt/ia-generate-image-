@@ -417,8 +417,33 @@ export interface Scene {
   videoClipOverrides?: SceneVideoClipOverride[];
   /** Modelo de cena (template SVG da biblioteca) aplicado a esta cena. */
   templateId?: string;
-  /** Conteúdo por slot que sobrescreve o binding automático. Chave: id do slot. */
-  templateOverrides?: Record<string, { text?: string; imageHref?: string }>;
+  /** Ajustes da instância do modelo nesta cena. Chave: id estável do slot. */
+  templateOverrides?: Record<string, SceneTemplateSlotOverride>;
+}
+
+export interface SceneTemplateSlotOverride {
+  text?: string;
+  imageHref?: string;
+  imageFit?: 'cover' | 'contain';
+  iconSvg?: string;
+  translateX?: number;
+  translateY?: number;
+  scale?: number;
+  rotation?: number;
+  fill?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: number;
+  opacity?: number;
+  hidden?: boolean;
+  animation?: {
+    enter: VideoLetteringEnterAnimation;
+    exit: VideoLetteringExitAnimation;
+    startSeconds?: number;
+    endSeconds?: number;
+    enterDurationSeconds?: number;
+    exitDurationSeconds?: number;
+  } | null;
 }
 
 /** Configuração global do estúdio de vídeo do storyboard. */
