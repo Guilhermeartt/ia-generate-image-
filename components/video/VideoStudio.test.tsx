@@ -197,6 +197,126 @@ describe('VideoStudio', () => {
     );
   });
 
+  it('aplica um preset profissional de transição ao plano selecionado', () => {
+    const onClipOverridesChange = vi.fn();
+    render(
+      <VideoStudio
+        scenes={[
+          scene,
+          { ...scene, id: 11, scene_id: 3, order: 2, imageUrl: 'data:image/png;base64,second' },
+        ]}
+        aspectRatio="16:9"
+        onLetteringChange={vi.fn()}
+        onImageSourcesChange={vi.fn()}
+        onClipOverridesChange={onClipOverridesChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Selecionar Cena 3-1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Movimento/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cinema' }));
+
+    expect(onClipOverridesChange).toHaveBeenCalledWith(
+      11,
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceId: 'main',
+          transitionIn: 'zoom-blur',
+          transitionDurationSeconds: 0.45,
+          transitionEasing: 'ease-in-out',
+        }),
+      ]),
+    );
+  });
+
+  it('desabilita a transição de entrada no primeiro plano', () => {
+    render(
+      <VideoStudio
+        scenes={[scene]}
+        aspectRatio="16:9"
+        onLetteringChange={vi.fn()}
+        onImageSourcesChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Movimento' }));
+
+    expect(screen.getByText(/primeiro plano começa o vídeo/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cinema' })).toBeDisabled();
+    expect(screen.getByLabelText('Tipo')).toBeDisabled();
+  });
+
+  it('limita presets de transição à duração dos planos envolvidos', () => {
+    const onClipOverridesChange = vi.fn();
+    render(
+      <VideoStudio
+        scenes={[
+          {
+            ...scene,
+            videoClipOverrides: [{ sourceId: 'main', durationSeconds: 0.2 }],
+          },
+          {
+            ...scene,
+            id: 11,
+            scene_id: 3,
+            order: 2,
+            imageUrl: 'data:image/png;base64,second',
+            videoClipOverrides: [{ sourceId: 'main', durationSeconds: 0.2 }],
+          },
+        ]}
+        aspectRatio="16:9"
+        onLetteringChange={vi.fn()}
+        onImageSourcesChange={vi.fn()}
+        onClipOverridesChange={onClipOverridesChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Selecionar Cena 3-1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Movimento/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Editorial' }));
+
+    expect(onClipOverridesChange).toHaveBeenCalledWith(
+      11,
+      expect.arrayContaining([
+        expect.objectContaining({
+          transitionIn: 'iris',
+          transitionDurationSeconds: 0.4,
+        }),
+      ]),
+    );
+  });
+
+  it('aplica o preset de transição por shapes', () => {
+    const onClipOverridesChange = vi.fn();
+    render(
+      <VideoStudio
+        scenes={[
+          scene,
+          { ...scene, id: 11, scene_id: 3, order: 2, imageUrl: 'data:image/png;base64,second' },
+        ]}
+        aspectRatio="16:9"
+        onLetteringChange={vi.fn()}
+        onImageSourcesChange={vi.fn()}
+        onClipOverridesChange={onClipOverridesChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Selecionar Cena 3-1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Movimento/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Shapes' }));
+
+    expect(onClipOverridesChange).toHaveBeenCalledWith(
+      11,
+      expect.arrayContaining([
+        expect.objectContaining({
+          transitionIn: 'shape-diagonal',
+          transitionDurationSeconds: 0.75,
+          transitionEasing: 'ease-in-out',
+        }),
+      ]),
+    );
+  });
+
   it('exposes a timeline with each clip selectable', () => {
     render(
       <VideoStudio

@@ -13,6 +13,7 @@ interface RangeFieldProps {
   onCommit?: (value: number) => void;
   format?: (value: number) => string;
   ariaDescribedBy?: string;
+  disabled?: boolean;
 }
 
 export const RangeField: React.FC<RangeFieldProps> = ({
@@ -26,6 +27,7 @@ export const RangeField: React.FC<RangeFieldProps> = ({
   onCommit,
   format,
   ariaDescribedBy,
+  disabled = false,
 }) => {
   const draggingRef = useRef(false);
   const formatted = format ? format(value) : value.toString();
@@ -63,6 +65,7 @@ export const RangeField: React.FC<RangeFieldProps> = ({
         }}
         aria-valuetext={formatted}
         aria-describedby={ariaDescribedBy}
+        disabled={disabled}
       />
     </div>
   );

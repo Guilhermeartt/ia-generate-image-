@@ -5,8 +5,6 @@ import type {
   SceneVideoClipOverride,
   SceneVideoLettering,
   VideoAudioTrack,
-  VideoClipTransition,
-  VideoKenBurnsConfig,
 } from '@/types';
 import { StoryboardComposition, type StoryboardVideoScene } from './StoryboardComposition';
 import {
@@ -15,6 +13,9 @@ import {
   DEFAULT_TRANSITION_EASING,
   DEFAULT_TRANSITION_SECONDS,
   createVideoScenes,
+  maximumTransitionSeconds,
+  isVideoClipTransition,
+  isVideoTransitionEasing,
   placeClipsOnTimeline,
   selectedVideoImageSourcesForScene,
   videoImageSourcesForScene,
@@ -90,8 +91,23 @@ const loadPersistedDefaults = (fallback: string): { defaults: MotionDefaults; as
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { defaults: DEFAULT_MOTION, aspect: fallback };
     const parsed = JSON.parse(raw);
+    const persistedDefaults = parsed.defaults ?? {};
     return {
-      defaults: { ...DEFAULT_MOTION, ...(parsed.defaults ?? {}) },
+      defaults: {
+        ...DEFAULT_MOTION,
+        ...persistedDefaults,
+        transition: isVideoClipTransition(persistedDefaults.transition)
+          ? persistedDefaults.transition
+          : DEFAULT_MOTION.transition,
+        transitionSeconds:
+          Number.isFinite(persistedDefaults.transitionSeconds)
+          && persistedDefaults.transitionSeconds >= 0
+            ? persistedDefaults.transitionSeconds
+            : DEFAULT_MOTION.transitionSeconds,
+        transitionEasing: isVideoTransitionEasing(persistedDefaults.transitionEasing)
+          ? persistedDefaults.transitionEasing
+          : DEFAULT_MOTION.transitionEasing,
+      },
       aspect: typeof parsed.aspect === 'string' && parsed.aspect in ASPECT_RATIOS ? parsed.aspect : fallback,
     };
   } catch {
@@ -105,13 +121,6 @@ const persistDefaults = (defaults: MotionDefaults, aspect: string) => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ defaults, aspect }));
   } catch { /* noop */ }
 };
-
-const VIDEO_TABS: ReadonlyArray<{ id: TabId; label: string }> = [
-  { id: 'lettering', label: 'Lettering' },
-  { id: 'motion', label: 'Movimento' },
-  { id: 'audio', label: 'Áudio' },
-  { id: 'preview', label: 'Preview' },
-];
 
 const VideoStudio: React.FC<VideoStudioProps> = ({
   scenes,
@@ -178,6 +187,13 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
     [videoScenes, selectedClipId],
   );
   const selectedClip = selectedClipFromList ?? videoScenes[0];
+  const selectedClipIndex = selectedClip
+    ? videoScenes.findIndex(clip => clip.id === selectedClip.id)
+    : -1;
+  const previousClip = selectedClipIndex > 0 ? videoScenes[selectedClipIndex - 1] : undefined;
+  const maxTransitionSeconds = selectedClip && previousClip
+    ? maximumTransitionSeconds(selectedClip.durationSeconds, previousClip.durationSeconds)
+    : 0;
 
   // Detectar clipe selecionado que sumiu
   useEffect(() => {
@@ -523,7 +539,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
         fadeInSeconds: 0.4,
         fadeOutSeconds: 0.4,
       });
-    } catch (err) {
+    } catch {
       setAudioUploadError('Falha ao carregar áudio. Tente outro arquivo.');
     }
   }, [audio, history]);
@@ -741,6 +757,8 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
               displayTransitionSeconds={selectedClip.transitionDurationSeconds}
               displayTransitionEasing={selectedClip.transitionEasing}
               displayKenBurns={selectedClip.kenBurns}
+              canTransition={videoScenes[0]?.id !== selectedClip.id}
+              maxTransitionSeconds={maxTransitionSeconds}
               defaults={effectiveDefaults}
               hasOverride={hasMotionOverride}
               onOverridePatchPreview={(patch) => {

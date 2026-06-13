@@ -8,7 +8,15 @@ import type {
 } from '@/types';
 import type { StoryboardVideoScene } from './StoryboardComposition';
 import { RangeField } from './VideoStudioControls';
-import { KEN_BURNS_OPTIONS, TRANSITION_EASING_OPTIONS, TRANSITION_OPTIONS } from './videoStudioConstants';
+import {
+  KEN_BURNS_OPTIONS,
+  TRANSITION_CATEGORY_LABELS,
+  TRANSITION_EASING_OPTIONS,
+  TRANSITION_OPTIONS,
+  TRANSITION_PRESETS,
+  transitionOptionFor,
+  type TransitionCategory,
+} from './videoStudioConstants';
 
 export interface MotionDefaults {
   secondsPerClip: number;
@@ -25,6 +33,8 @@ interface MotionPanelProps {
   displayTransitionSeconds: number;
   displayTransitionEasing: VideoTransitionEasing;
   displayKenBurns: VideoKenBurnsConfig;
+  canTransition: boolean;
+  maxTransitionSeconds: number;
   defaults: MotionDefaults;
   hasOverride: boolean;
   onOverridePatchPreview: (patch: Partial<SceneVideoClipOverride>) => void;
@@ -43,6 +53,8 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
   displayTransitionSeconds,
   displayTransitionEasing,
   displayKenBurns,
+  canTransition,
+  maxTransitionSeconds,
   defaults,
   hasOverride,
   onOverridePatchPreview,
@@ -53,6 +65,10 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
   panelId,
   tabId,
 }) => {
+  const selectedTransition = transitionOptionFor(displayTransition);
+  const transitionCategories = Object.keys(TRANSITION_CATEGORY_LABELS) as TransitionCategory[];
+  const effectiveTransitionSeconds = Math.min(displayTransitionSeconds, maxTransitionSeconds);
+  const clampTransitionSeconds = (seconds: number) => Math.min(seconds, maxTransitionSeconds);
   const handleClearOverride = () => {
     if (typeof window === 'undefined' || window.confirm('Resetar duração, transição e Ken Burns deste plano?')) {
       onClearOverride();
@@ -76,7 +92,32 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
       <p className="vs-hint">Padrão global: {defaults.secondsPerClip.toFixed(1)}s</p>
 
       <p className="vs-section-title">Transição de entrada</p>
-      <div className="vs-row-2">
+      {!canTransition && (
+        <p className="vs-hint vs-warning">O primeiro plano começa o vídeo e não possui transição de entrada.</p>
+      )}
+      <fieldset className="vs-transition-controls" disabled={!canTransition}>
+        <legend className="sr-only">Configuração da transição de entrada</legend>
+        <div className="vs-transition-presets" aria-label="Presets profissionais de transição">
+        {TRANSITION_PRESETS.map(preset => (
+          <button
+            key={preset.id}
+            type="button"
+            className={`vs-transition-preset${displayTransition === preset.transition ? ' is-active' : ''}`}
+            aria-label={preset.label}
+            aria-pressed={displayTransition === preset.transition}
+            title={preset.description}
+            onClick={() => onOverridePatchCommit({
+              transitionIn: preset.transition,
+              transitionDurationSeconds: clampTransitionSeconds(preset.seconds),
+              transitionEasing: preset.easing,
+            }, `Preset de transição: ${preset.label}`)}
+          >
+            <strong>{preset.label}</strong>
+            <span>{preset.seconds.toFixed(2)}s</span>
+          </button>
+        ))}
+        </div>
+        <div className="vs-row-2">
         <div>
           <label className="panel-field-label" htmlFor="video-clip-transition">Tipo</label>
           <select
@@ -88,8 +129,12 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
               'Transição',
             )}
           >
-            {TRANSITION_OPTIONS.map(option => (
-              <option key={option.id} value={option.id}>{option.label}</option>
+            {transitionCategories.map(category => (
+              <optgroup key={category} label={TRANSITION_CATEGORY_LABELS[category]}>
+                {TRANSITION_OPTIONS.filter(option => option.category === category).map(option => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
@@ -97,10 +142,11 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
           <RangeField
             id="video-clip-transition-duration"
             label="Duração"
-            min={0}
-            max={2}
+            min={displayTransition === 'cut' ? 0 : 0.05}
+            max={Math.max(0.05, maxTransitionSeconds)}
             step={0.05}
-            value={displayTransitionSeconds}
+            value={effectiveTransitionSeconds}
+            disabled={displayTransition === 'cut'}
             onChange={(value) => onOverridePatchPreview({ transitionDurationSeconds: value })}
             onCommit={(value) => onOverridePatchCommit(
               { transitionDurationSeconds: value },
@@ -109,21 +155,45 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
             format={(value) => `${value.toFixed(2)}s`}
           />
         </div>
-      </div>
-      <label className="panel-field-label" htmlFor="video-clip-transition-easing">Easing (entrada/saída)</label>
-      <select
-        id="video-clip-transition-easing"
-        className="field"
-        value={displayTransitionEasing}
-        onChange={(event) => onOverridePatchCommit(
-          { transitionEasing: event.target.value as VideoTransitionEasing },
-          'Easing da transição',
+        </div>
+        {displayTransition !== 'cut' && displayTransitionSeconds > maxTransitionSeconds && (
+          <p className="vs-hint vs-warning">
+            Limitada a {maxTransitionSeconds.toFixed(2)}s pela duração dos planos envolvidos.
+          </p>
         )}
-      >
-        {TRANSITION_EASING_OPTIONS.map(option => (
-          <option key={option.id} value={option.id}>{option.label}</option>
-        ))}
-      </select>
+        <div className="vs-transition-summary" role="status">
+        <div>
+          <strong>{selectedTransition.label}</strong>
+          <span>{selectedTransition.description}</span>
+        </div>
+        {displayTransition !== 'cut' && (
+          <button
+            type="button"
+            onClick={() => onOverridePatchCommit(
+              { transitionDurationSeconds: clampTransitionSeconds(selectedTransition.recommendedSeconds) },
+              'Duração recomendada da transição',
+            )}
+          >
+            Usar {clampTransitionSeconds(selectedTransition.recommendedSeconds).toFixed(2)}s
+          </button>
+        )}
+        </div>
+        <label className="panel-field-label" htmlFor="video-clip-transition-easing">Easing (entrada/saída)</label>
+        <select
+          id="video-clip-transition-easing"
+          className="field"
+          value={displayTransitionEasing}
+          disabled={displayTransition === 'cut'}
+          onChange={(event) => onOverridePatchCommit(
+            { transitionEasing: event.target.value as VideoTransitionEasing },
+            'Easing da transição',
+          )}
+        >
+          {TRANSITION_EASING_OPTIONS.map(option => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
+        </select>
+      </fieldset>
 
       <p className="vs-section-title">Ken Burns (pan + zoom)</p>
       <div className="vs-row-2">
@@ -192,8 +262,12 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
               'Transição padrão',
             )}
           >
-            {TRANSITION_OPTIONS.map(option => (
-              <option key={option.id} value={option.id}>{option.label}</option>
+            {transitionCategories.map(category => (
+              <optgroup key={category} label={TRANSITION_CATEGORY_LABELS[category]}>
+                {TRANSITION_OPTIONS.filter(option => option.category === category).map(option => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

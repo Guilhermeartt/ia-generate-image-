@@ -2945,7 +2945,28 @@
       }
       .vs-timeline-clip-transition {
         position: absolute; top: 0; left: 0; bottom: 0;
-        width: 3px; background: linear-gradient(180deg, transparent, var(--indigo), transparent);
+        min-width: 4px;
+        max-width: 58%;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        overflow: hidden;
+        border-right: 1px solid rgba(255,255,255,.45);
+        background:
+          linear-gradient(135deg, rgba(99,102,241,.72), rgba(34,211,238,.22)),
+          repeating-linear-gradient(135deg, transparent 0 4px, rgba(255,255,255,.14) 4px 6px);
+        box-shadow: 4px 0 12px rgba(15,23,42,.28);
+      }
+      .vs-timeline-clip-transition > span {
+        margin-top: 3px;
+        padding: 1px 3px;
+        border-radius: 3px;
+        background: rgba(4,6,12,.66);
+        color: #fff;
+        font-size: 7px;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
       }
       .vs-timeline-playhead {
         position: absolute; top: 0; bottom: 0; width: 2px;
@@ -2990,6 +3011,89 @@
       .vs-hint { font-size: 10px; color: var(--text-4); margin-top: -4px; }
       .vs-warning { color: #FBBF24; }
       .vs-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .vs-transition-presets {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .vs-transition-controls {
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .vs-transition-controls:disabled,
+      .vs-transition-controls[disabled] {
+        opacity: .58;
+      }
+      .vs-transition-preset {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        padding: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface-2);
+        color: var(--text-2);
+        cursor: pointer;
+        text-align: left;
+        transition: border-color .12s, background .12s, transform .12s;
+      }
+      .vs-transition-preset:hover {
+        transform: translateY(-1px);
+        border-color: var(--indigo);
+      }
+      .vs-transition-preset.is-active {
+        border-color: var(--indigo);
+        background: var(--indigo-s);
+        color: var(--text-1);
+      }
+      .vs-transition-preset strong { font-size: 10px; }
+      .vs-transition-preset span { font-size: 9px; color: var(--text-4); }
+      .vs-transition-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--surface-2) 76%, transparent);
+      }
+      .vs-transition-summary > div {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .vs-transition-summary strong { color: var(--text-1); font-size: 11px; }
+      .vs-transition-summary span { color: var(--text-4); font-size: 9px; line-height: 1.35; }
+      .vs-transition-summary button {
+        flex: 0 0 auto;
+        padding: 5px 7px;
+        border: 1px solid var(--indigo-b);
+        border-radius: 6px;
+        background: var(--indigo-s);
+        color: var(--indigo-text);
+        font-size: 9px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      @media (max-width: 1100px) {
+        .vs-transition-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 520px) {
+        .vs-transition-presets { grid-template-columns: 1fr 1fr; }
+        .vs-transition-summary {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
 
       .vs-panel-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 8px 10px; background: var(--surface-2); border-radius: 8px; }
       .vs-panel-meta-title { font-size: 12px; font-weight: 700; color: var(--text-1); }

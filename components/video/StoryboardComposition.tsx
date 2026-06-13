@@ -25,6 +25,8 @@ import { listSlots } from '../svg-editor/svgDocument';
 import { buildSceneSlotStyles, resolveSlotContents } from '../svg-editor/templateBinding';
 import { slotStyleAtTime, type EnterExitStyle } from '../svg-editor/slotAnimation';
 import { renderTemplate } from '../svg-editor/templateRender';
+import { transitionStyle, type TransitionVisual } from './transitionEffects';
+import DiagonalShapesOverlay from './DiagonalShapesOverlay';
 
 export interface StoryboardVideoScene {
   id: string;
@@ -108,20 +110,6 @@ const EASING_FN: Record<VideoTransitionEasing, (t: number) => number> = {
 const resolveEasing = (easing: VideoTransitionEasing | undefined): ((t: number) => number) =>
   EASING_FN[easing ?? 'ease-in-out'] ?? EASING_FN['ease-in-out'];
 
-interface TransitionVisual {
-  transform?: string;
-  opacity?: number;
-  clipPath?: string;
-  filter?: string;
-}
-
-interface TransitionStyleArgs {
-  type: VideoClipTransition;
-  enterProgress: number;
-  exitProgress: number;
-  isIncoming: boolean;
-}
-
 /**
  * Estilo aplicado a um clipe para uma transição.
  *
@@ -133,51 +121,6 @@ interface TransitionStyleArgs {
  * evitando o "buraco" escuro no meio. Slides usam empurrão (push) para nunca abrir
  * vão. Fades são tratados por overlay de cor (ver ClipLayer).
  */
-const transitionStyle = ({ type, enterProgress, exitProgress, isIncoming }: TransitionStyleArgs): TransitionVisual => {
-  switch (type) {
-    case 'cut':
-    case 'fade-black':
-    case 'fade-white':
-      return {};
-    case 'crossfade':
-      return isIncoming ? { opacity: enterProgress } : {};
-    case 'blur':
-      return isIncoming
-        ? { opacity: enterProgress, filter: `blur(${interpolate(enterProgress, [0, 1], [18, 0])}px)` }
-        : { filter: `blur(${interpolate(exitProgress, [0, 1], [0, 18])}px)` };
-    case 'zoom':
-      return isIncoming
-        ? { opacity: enterProgress, transform: `scale(${interpolate(enterProgress, [0, 1], [0.72, 1])})` }
-        : { transform: `scale(${interpolate(exitProgress, [0, 1], [1, 1.18])})` };
-    case 'slide-left':
-      return isIncoming
-        ? { transform: `translateX(${interpolate(enterProgress, [0, 1], [100, 0])}%)` }
-        : { transform: `translateX(${interpolate(exitProgress, [0, 1], [0, -100])}%)` };
-    case 'slide-right':
-      return isIncoming
-        ? { transform: `translateX(${interpolate(enterProgress, [0, 1], [-100, 0])}%)` }
-        : { transform: `translateX(${interpolate(exitProgress, [0, 1], [0, 100])}%)` };
-    case 'slide-up':
-      return isIncoming
-        ? { transform: `translateY(${interpolate(enterProgress, [0, 1], [100, 0])}%)` }
-        : { transform: `translateY(${interpolate(exitProgress, [0, 1], [0, -100])}%)` };
-    case 'slide-down':
-      return isIncoming
-        ? { transform: `translateY(${interpolate(enterProgress, [0, 1], [-100, 0])}%)` }
-        : { transform: `translateY(${interpolate(exitProgress, [0, 1], [0, 100])}%)` };
-    case 'wipe-left':
-      return isIncoming ? { clipPath: `inset(0 ${interpolate(enterProgress, [0, 1], [100, 0])}% 0 0)` } : {};
-    case 'wipe-right':
-      return isIncoming ? { clipPath: `inset(0 0 0 ${interpolate(enterProgress, [0, 1], [100, 0])}%)` } : {};
-    case 'wipe-up':
-      return isIncoming ? { clipPath: `inset(${interpolate(enterProgress, [0, 1], [100, 0])}% 0 0 0)` } : {};
-    case 'wipe-down':
-      return isIncoming ? { clipPath: `inset(0 0 ${interpolate(enterProgress, [0, 1], [100, 0])}% 0)` } : {};
-    default:
-      return {};
-  }
-};
-
 /**
  * Funde o estilo de entrada (deste clipe) com o de saída (rumo ao próximo) sem que um
  * sobrescreva o outro: concatena transforms/filters, MULTIPLICA opacidades e mantém o
@@ -198,6 +141,9 @@ const mergeTransitionVisuals = (
     filter: filters.length ? filters.join(' ') : undefined,
     opacity,
     clipPath: incoming.clipPath ?? outgoing.clipPath,
+    maskImage: incoming.maskImage ?? outgoing.maskImage,
+    WebkitMaskImage: incoming.WebkitMaskImage ?? outgoing.WebkitMaskImage,
+    transformOrigin: incoming.transformOrigin ?? outgoing.transformOrigin,
   };
 };
 
@@ -737,6 +683,18 @@ export const StoryboardComposition: React.FC<StoryboardCompositionProps> = ({
           </Sequence>
         );
       })}
+      {placements.map((placement) => (
+        placement.clip.transitionIn === 'shape-diagonal'
+        && placement.transitionInFrames > 0 ? (
+          <Sequence
+            key={`transition-overlay:${placement.clip.id}`}
+            from={placement.startFrame}
+            durationInFrames={placement.transitionInFrames}
+          >
+            <DiagonalShapesOverlay durationFrames={placement.transitionInFrames} />
+          </Sequence>
+        ) : null
+      ))}
       {audio && (
         <Audio src={audio.src} volume={audioVolume} startFrom={0} />
       )}

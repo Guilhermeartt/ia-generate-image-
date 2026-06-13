@@ -50,6 +50,17 @@ export const DEFAULT_KEN_BURNS: VideoKenBurnsConfig = {
 export const DEFAULT_TRANSITION: VideoClipTransition = 'crossfade';
 export const DEFAULT_TRANSITION_SECONDS = 0.3;
 export const DEFAULT_TRANSITION_EASING: VideoTransitionEasing = 'ease-in-out';
+export const MAX_TRANSITION_SHARE = 0.8;
+
+export const maximumTransitionSeconds = (
+  currentDurationSeconds: number,
+  previousDurationSeconds: number,
+): number => Math.max(
+  0,
+  Math.floor(
+    Math.min(currentDurationSeconds, previousDurationSeconds) * MAX_TRANSITION_SHARE * 100,
+  ) / 100,
+);
 
 /**
  * Transições que sobrepõem o clipe anterior ao próximo (os dois ficam visíveis ao
@@ -61,6 +72,15 @@ export const OVERLAPPING_TRANSITIONS: ReadonlySet<VideoClipTransition> = new Set
   'crossfade',
   'blur',
   'zoom',
+  'zoom-blur',
+  'whip-left',
+  'whip-right',
+  'iris',
+  'clock-wipe',
+  'shape-diamond',
+  'shape-hexagon',
+  'shape-star',
+  'shape-diagonal',
   'slide-left',
   'slide-right',
   'slide-up',
@@ -70,6 +90,26 @@ export const OVERLAPPING_TRANSITIONS: ReadonlySet<VideoClipTransition> = new Set
   'wipe-up',
   'wipe-down',
 ]);
+
+const ALL_TRANSITIONS: ReadonlySet<VideoClipTransition> = new Set([
+  'cut',
+  'fade-black',
+  'fade-white',
+  ...OVERLAPPING_TRANSITIONS,
+]);
+
+const ALL_TRANSITION_EASINGS: ReadonlySet<VideoTransitionEasing> = new Set([
+  'linear',
+  'ease-in',
+  'ease-out',
+  'ease-in-out',
+]);
+
+export const isVideoClipTransition = (value: unknown): value is VideoClipTransition =>
+  typeof value === 'string' && ALL_TRANSITIONS.has(value as VideoClipTransition);
+
+export const isVideoTransitionEasing = (value: unknown): value is VideoTransitionEasing =>
+  typeof value === 'string' && ALL_TRANSITION_EASINGS.has(value as VideoTransitionEasing);
 
 export const videoImageSourcesForScene = (scene: Scene): SceneVideoImageSource[] => {
   const sources: SceneVideoImageSource[] = [];
@@ -164,12 +204,27 @@ export const createVideoScenes = (
       const parentSceneClipIndex = parentClipIndexes.get(scene.scene_id) ?? 0;
       parentClipIndexes.set(scene.scene_id, parentSceneClipIndex + 1);
       const override = clipOverrideFor(scene, source.id);
-      const durationSeconds = override?.durationSeconds ?? opts.defaultSecondsPerClip;
+      const requestedDurationSeconds = override?.durationSeconds ?? opts.defaultSecondsPerClip;
+      const durationSeconds = Number.isFinite(requestedDurationSeconds)
+        ? Math.max(0.5, requestedDurationSeconds)
+        : Math.max(0.5, DEFAULT_OPTIONS.defaultSecondsPerClip);
       const kenBurns = override?.kenBurns ?? opts.defaultKenBurns;
-      const transitionIn = globalClipIndex === 0 ? 'cut' : (override?.transitionIn ?? opts.defaultTransition);
-      const transitionDurationSeconds =
+      const requestedTransition = override?.transitionIn ?? opts.defaultTransition;
+      const transitionIn = globalClipIndex === 0
+        ? 'cut'
+        : isVideoClipTransition(requestedTransition)
+          ? requestedTransition
+          : DEFAULT_TRANSITION;
+      const requestedTransitionSeconds =
         override?.transitionDurationSeconds ?? opts.defaultTransitionSeconds;
-      const transitionEasing = override?.transitionEasing ?? opts.defaultTransitionEasing;
+      const transitionDurationSeconds =
+        Number.isFinite(requestedTransitionSeconds) && requestedTransitionSeconds >= 0
+          ? requestedTransitionSeconds
+          : DEFAULT_TRANSITION_SECONDS;
+      const requestedTransitionEasing = override?.transitionEasing ?? opts.defaultTransitionEasing;
+      const transitionEasing = isVideoTransitionEasing(requestedTransitionEasing)
+        ? requestedTransitionEasing
+        : DEFAULT_TRANSITION_EASING;
       const lettering =
         override?.lettering
         ?? parentLettering.get(scene.scene_id)
@@ -246,10 +301,20 @@ export const placeClipsOnTimeline = (
   let prevDurationFrames = 0;
   clips.forEach((clip, index) => {
     const durationFrames = Math.max(1, Math.round(clip.durationSeconds * fps));
-    const transitionInFrames =
+    const requestedTransitionFrames =
       index === 0 || clip.transitionIn === 'cut'
         ? 0
         : Math.max(0, Math.round(clip.transitionDurationSeconds * fps));
+    const maxTransitionFrames = index === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.floor(Math.min(durationFrames, prevDurationFrames) * MAX_TRANSITION_SHARE),
+        );
+    const transitionInFrames = Math.min(
+      requestedTransitionFrames,
+      maxTransitionFrames,
+    );
     const overlapFrames = OVERLAPPING_TRANSITIONS.has(clip.transitionIn)
       ? Math.min(transitionInFrames, prevDurationFrames)
       : 0;

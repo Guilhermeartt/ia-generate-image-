@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/types';
-import { createVideoScenes, DEFAULT_KEN_BURNS, defaultLetteringForScene } from './videoScenes';
+import {
+  createVideoScenes,
+  DEFAULT_KEN_BURNS,
+  defaultLetteringForScene,
+  placeClipsOnTimeline,
+} from './videoScenes';
 
 const scene = (order: number, overrides: Partial<Scene> = {}): Scene => ({
   id: order,
@@ -139,6 +144,27 @@ describe('createVideoScenes', () => {
     });
   });
 
+  it('recupera valores inválidos de transição vindos de projetos importados', () => {
+    const result = createVideoScenes([
+      scene(1, { imageUrl: 'data:image/png;base64,first' }),
+      scene(2, {
+        imageUrl: 'data:image/png;base64,second',
+        videoClipOverrides: [{
+          sourceId: 'main',
+          transitionIn: 'unknown-transition' as never,
+          transitionDurationSeconds: Number.NaN,
+          transitionEasing: 'unknown-easing' as never,
+        }],
+      }),
+    ]);
+
+    expect(result[1]).toMatchObject({
+      transitionIn: 'crossfade',
+      transitionDurationSeconds: 0.3,
+      transitionEasing: 'ease-in-out',
+    });
+  });
+
   it('shares one lettering timeline across sub-scenes with the same parent scene id', () => {
     const result = createVideoScenes([
       scene(1, {
@@ -188,4 +214,60 @@ describe('createVideoScenes', () => {
     expect(result[0].lettering).toEqual(sharedLettering);
     expect(result[1].lettering).toEqual(sharedLettering);
   });
+});
+
+describe('placeClipsOnTimeline', () => {
+  it('limita a transição à duração dos dois clipes envolvidos', () => {
+    const clips = createVideoScenes([
+      scene(1, { imageUrl: 'data:image/png;base64,first' }),
+      scene(2, {
+        imageUrl: 'data:image/png;base64,second',
+        videoClipOverrides: [{
+          sourceId: 'main',
+          durationSeconds: 0.5,
+          transitionIn: 'crossfade',
+          transitionDurationSeconds: 2,
+        }],
+      }),
+    ], { defaultSecondsPerClip: 1 });
+
+    const { placements, totalFrames } = placeClipsOnTimeline(clips, 30);
+
+    expect(placements[1].transitionInFrames).toBe(12);
+    expect(placements[1].overlapFrames).toBe(12);
+    expect(totalFrames).toBe(33);
+  });
+
+  it.each([
+    'zoom-blur',
+    'whip-left',
+    'whip-right',
+    'iris',
+    'clock-wipe',
+    'shape-diamond',
+    'shape-hexagon',
+    'shape-star',
+    'shape-diagonal',
+  ] as const)(
+    'sobrepõe a transição moderna %s sem criar lacuna na timeline',
+    (transitionIn) => {
+      const clips = createVideoScenes([
+        scene(1, { imageUrl: 'data:image/png;base64,first' }),
+        scene(2, {
+          imageUrl: 'data:image/png;base64,second',
+          videoClipOverrides: [{
+            sourceId: 'main',
+            transitionIn,
+            transitionDurationSeconds: 0.5,
+          }],
+        }),
+      ], { defaultSecondsPerClip: 2 });
+
+      const { placements } = placeClipsOnTimeline(clips, 30);
+
+      expect(placements[1].transitionInFrames).toBe(15);
+      expect(placements[1].overlapFrames).toBe(15);
+      expect(placements[1].startFrame).toBe(45);
+    },
+  );
 });

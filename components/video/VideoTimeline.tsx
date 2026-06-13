@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import type { StoryboardVideoScene } from './StoryboardComposition';
 import type { TimelineClipPlacement } from './videoScenes';
+import { transitionOptionFor } from './videoStudioConstants';
 
 interface VideoTimelineProps {
   placements: TimelineClipPlacement[];
@@ -140,6 +141,11 @@ const VideoTimeline: React.FC<VideoTimelineProps> = ({
           const left = (placement.startFrame / Math.max(1, totalFrames)) * 100;
           const width = (placement.durationFrames / Math.max(1, totalFrames)) * 100;
           const isSelected = placement.clip.id === selectedClipId;
+          const transition = transitionOptionFor(placement.clip.transitionIn);
+          const transitionWidth = Math.min(
+            100,
+            (placement.transitionInFrames / Math.max(1, placement.durationFrames)) * 100,
+          );
           return (
             <button
               type="button"
@@ -150,7 +156,7 @@ const VideoTimeline: React.FC<VideoTimelineProps> = ({
                 event.stopPropagation();
                 onSelectClip(placement.clip, placement.startFrame);
               }}
-              aria-label={`Selecionar ${placement.clip.title}, duração ${placement.clip.durationSeconds.toFixed(1)} segundos${placement.clip.hasOverride ? ', modificado' : ''}`}
+              aria-label={`Selecionar ${placement.clip.title}, duração ${placement.clip.durationSeconds.toFixed(1)} segundos${placement.transitionInFrames > 0 ? `, entrada com ${transition.label} por ${(placement.transitionInFrames / fps).toFixed(2)} segundos` : ''}${placement.clip.hasOverride ? ', modificado' : ''}`}
             >
               <img src={placement.clip.imageUrl} alt="" />
               <span className="vs-timeline-clip-label">{placement.clip.title}</span>
@@ -158,9 +164,12 @@ const VideoTimeline: React.FC<VideoTimelineProps> = ({
               {placement.transitionInFrames > 0 && (
                 <span
                   className="vs-timeline-clip-transition"
-                  title={`Transição: ${placement.clip.transitionIn}`}
+                  style={{ width: `${transitionWidth}%` }}
+                  title={`${transition.label} · ${(placement.transitionInFrames / fps).toFixed(2)}s`}
                   aria-hidden="true"
-                />
+                >
+                  <span>{transition.shortLabel}</span>
+                </span>
               )}
             </button>
           );
