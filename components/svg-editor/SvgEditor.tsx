@@ -108,6 +108,9 @@ const SvgEditor: React.FC = () => {
       setDocumentState((current) => ({ ...current, markup: after }));
       if (nextSelectedId !== undefined) setSelectedId(nextSelectedId);
       lastCommitRef.current = { key, time: now };
+      // Depois de criar uma forma, volta para a ferramenta Selecionar — assim o
+      // próximo arrasto move/ajusta a forma em vez de desenhar outra.
+      if (label === 'Criar elemento' || label === 'Criar texto') setTool('select');
     },
     [selectedId],
   );

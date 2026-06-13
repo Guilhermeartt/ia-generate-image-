@@ -148,6 +148,82 @@ const vectorThrough = (vector: Point, matrix: DOMMatrix): Point => ({
   y: vector.x * matrix.b + vector.y * matrix.d,
 });
 
+const TRANSFORM_EPSILON = 1e-4;
+
+/**
+ * "Achata" um transform de translate/escala na própria geometria do elemento
+ * (x/y/width/height, cx/cy/rx/ry, pontos da linha, font-size do texto) e remove
+ * o atributo `transform`. Mantém o transform quando há rotação/cisalhamento (não
+ * dá para representar isso na geometria de uma forma alinhada aos eixos) e para
+ * formas baseadas em path/grupo/imagem. Mantém canvas e painel em sincronia.
+ */
+const bakeTransform = (element: SVGGraphicsElement): void => {
+  const consolidated = element.transform.baseVal.consolidate();
+  if (!consolidated) return;
+  const m = consolidated.matrix;
+  if (Math.abs(m.b) > TRANSFORM_EPSILON || Math.abs(m.c) > TRANSFORM_EPSILON) return;
+
+  const sx = m.a;
+  const sy = m.d;
+  const tx = m.e;
+  const ty = m.f;
+  const num = (name: string) => Number.parseFloat(element.getAttribute(name) || '0') || 0;
+  const set = (name: string, value: number) =>
+    element.setAttribute(name, String(Math.round(value * 100) / 100));
+
+  switch (element.localName) {
+    case 'rect':
+      set('x', sx * num('x') + tx);
+      set('y', sy * num('y') + ty);
+      set('width', Math.abs(sx) * num('width'));
+      set('height', Math.abs(sy) * num('height'));
+      if (element.hasAttribute('rx')) set('rx', Math.abs(sx) * num('rx'));
+      if (element.hasAttribute('ry')) set('ry', Math.abs(sy) * num('ry'));
+      break;
+    case 'ellipse':
+      set('cx', sx * num('cx') + tx);
+      set('cy', sy * num('cy') + ty);
+      set('rx', Math.abs(sx) * num('rx'));
+      set('ry', Math.abs(sy) * num('ry'));
+      break;
+    case 'circle':
+      set('cx', sx * num('cx') + tx);
+      set('cy', sy * num('cy') + ty);
+      set('r', Math.abs(sx) * num('r'));
+      break;
+    case 'line':
+      set('x1', sx * num('x1') + tx);
+      set('y1', sy * num('y1') + ty);
+      set('x2', sx * num('x2') + tx);
+      set('y2', sy * num('y2') + ty);
+      break;
+    case 'text':
+      set('x', sx * num('x') + tx);
+      set('y', sy * num('y') + ty);
+      if (Math.abs(sy - 1) > TRANSFORM_EPSILON) {
+        set('font-size', (Number.parseFloat(element.getAttribute('font-size') || '16') || 16) * Math.abs(sy));
+      }
+      break;
+    default:
+      return; // path / g / image: mantém o transform
+  }
+  element.removeAttribute('transform');
+};
+
+// O documento (SVG vivo) é renderizado num componente memoizado pela string do
+// markup. Durante um gesto, o SvgCanvas re-renderiza várias vezes (posição do
+// ponteiro, retângulo de seleção), mas o markup NÃO muda — então o React.memo
+// pula este div e não reconcilia o innerHTML. Sem isso, o re-render apagava a
+// mutação imperativa do gesto (transform), fazendo a forma "piscar" na posição
+// anterior e o move não ser aplicado no commit.
+const SvgDocument = React.memo(
+  React.forwardRef<HTMLDivElement, { markup: string }>(function SvgDocument({ markup }, ref) {
+    return (
+      <div ref={ref} className="svg-editor-document" dangerouslySetInnerHTML={{ __html: markup }} />
+    );
+  }),
+);
+
 const SvgCanvas: React.FC<SvgCanvasProps> = ({
   markup,
   tool,
@@ -546,6 +622,16 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
       }
     }
 
+    // Mover/redimensionar: achata o transform de translate/escala na geometria
+    // para o painel (X/Y/L/A) refletir a posição/tamanho reais e edições não
+    // pularem. Rotação permanece como transform.
+    if (gesture.kind === 'move' || gesture.kind === 'resize') {
+      const element = hostRef.current?.querySelector<SVGGraphicsElement>(
+        `#${CSS.escape(gesture.id)}`,
+      );
+      if (element) bakeTransform(element);
+    }
+
     const after = serializeCanvas();
     if (!after || after === gesture.before) return;
     const label =
@@ -592,11 +678,7 @@ const SvgCanvas: React.FC<SvgCanvasProps> = ({
           transform: `translate(-50%, -50%) translate(${camera.x}px, ${camera.y}px) scale(${renderedScale})`,
         }}
       >
-        <div
-          ref={hostRef}
-          className="svg-editor-document"
-          dangerouslySetInnerHTML={{ __html: markup }}
-        />
+        <SvgDocument ref={hostRef} markup={markup} />
         {showSafeArea && (
           <div className="svg-editor-safe-area">
             <span>Margem segura 5%</span>
