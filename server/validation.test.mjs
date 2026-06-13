@@ -49,3 +49,26 @@ describe('schemas.billingPlan', () => {
     expect(validate(schemas.billingPlan, { planId: 'platform' }).planId).toBe('platform');
   });
 });
+
+describe('schemas.svgTemplate', () => {
+  const template = {
+    name: 'Modelo',
+    markup: '<svg viewBox="0 0 1080.5 1920.25"></svg>',
+  };
+
+  it('aceita dimensões fracionárias de viewBox', () => {
+    const out = validate(schemas.svgTemplate, {
+      ...template,
+      viewW: 1080.5,
+      viewH: 1920.25,
+    });
+
+    expect(out.viewW).toBe(1080.5);
+    expect(out.viewH).toBe(1920.25);
+  });
+
+  it('continua rejeitando dimensões não positivas', () => {
+    expect(() => validate(schemas.svgTemplate, { ...template, viewW: 0 })).toThrow(/viewW/);
+    expect(() => validate(schemas.svgTemplate, { ...template, viewH: -1 })).toThrow(/viewH/);
+  });
+});
