@@ -18,6 +18,7 @@ import {
   listSlots,
   listSvgLayers,
   markSlot,
+  moveSvgElement,
   parseViewBox,
   readGradient,
   removeSvgElement,
@@ -77,6 +78,7 @@ const SvgEditor: React.FC = () => {
   const [previewMode, setPreviewMode] = useState(false);
   const [camera, setCamera] = useState<SvgCamera>({ x: 0, y: 0, zoom: 1 });
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const lastCommitRef = useRef<{ key: string; time: number } | null>(null);
   const properties = useMemo(
     () => (selectedId ? getSvgElementProperties(documentState.markup, selectedId) : null),
@@ -143,6 +145,26 @@ const SvgEditor: React.FC = () => {
   const changeAspect = useCallback(
     (width: number, height: number) => {
       applyChange(setViewBox(documentState.markup, width, height), 'Proporção do quadro');
+    },
+    [applyChange, documentState.markup],
+  );
+
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const reorderLayer = useCallback(
+    (draggedId: string, targetId: string, before: boolean) => {
+      applyChange(
+        moveSvgElement(documentState.markup, draggedId, targetId, before),
+        'Reordenar camada',
+        draggedId,
+      );
     },
     [applyChange, documentState.markup],
   );
@@ -556,6 +578,9 @@ const SvgEditor: React.FC = () => {
             );
             if (locked && selectedId === id) setSelectedId(null);
           }}
+          collapsedGroups={collapsedGroups}
+          onToggleCollapse={toggleCollapse}
+          onReorderLayer={reorderLayer}
           onUpload={(files) => void importFiles(files)}
           onChange={(attributes, label) => {
             if (!selectedId) return;

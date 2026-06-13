@@ -5,6 +5,7 @@ import {
   applyGradientFill,
   cleanupSvg,
   createBlankSvg,
+  moveSvgElement,
   duplicateSvgElement,
   getSlotMeta,
   isGradientFill,
@@ -538,5 +539,34 @@ describe('cleanupSvg', () => {
       </svg>
     `);
     expect(markup).toContain('id="fonte"');
+  });
+});
+
+describe('moveSvgElement', () => {
+  const order = (markup: string) => [...markup.matchAll(/<rect id="([^"]+)"/g)].map((m) => m[1]);
+
+  it('reordena: move um elemento para antes de outro', () => {
+    const a = appendSvgElement(createBlankSvg(), 'rect', { x: 0, y: 0, width: 10, height: 10 });
+    const b = appendSvgElement(a.markup, 'rect', { x: 0, y: 0, width: 10, height: 10 });
+    const c = appendSvgElement(b.markup, 'rect', { x: 0, y: 0, width: 10, height: 10 });
+    // DOM: [a, b, c] → mover c para antes de a
+    expect(order(moveSvgElement(c.markup, c.id, a.id, true))).toEqual([c.id, a.id, b.id]);
+    // mover a para depois de c
+    expect(order(moveSvgElement(c.markup, a.id, c.id, false))).toEqual([b.id, c.id, a.id]);
+  });
+
+  it('re-parenta ao mover para junto de um filho de grupo', () => {
+    const markup = sanitizeSvg(
+      '<svg viewBox="0 0 100 100"><g id="g1"><rect id="r1" width="10" height="10"/></g><rect id="r2" width="10" height="10"/></svg>',
+    );
+    const moved = moveSvgElement(markup, 'r2', 'r1', true);
+    expect(/<g id="g1">.*id="r2".*id="r1".*<\/g>/s.test(moved)).toBe(true);
+  });
+
+  it('não move um grupo para dentro de si mesmo', () => {
+    const markup = sanitizeSvg(
+      '<svg viewBox="0 0 100 100"><g id="g1"><rect id="r1" width="10" height="10"/></g></svg>',
+    );
+    expect(moveSvgElement(markup, 'g1', 'r1', true)).toBe(markup);
   });
 });

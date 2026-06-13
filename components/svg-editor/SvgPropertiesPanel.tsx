@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import SlotAnimationEditor from './SlotAnimationEditor';
 import GradientEditor from './GradientEditor';
 import { SVG_ASPECT_PRESETS, aspectLabelFor, isGradientFill } from './svgDocument';
@@ -35,6 +35,11 @@ interface SvgPropertiesPanelProps {
   onDeleteLayer: (id: string) => void;
   onToggleLayerVisibility: (id: string, visible: boolean) => void;
   onToggleLayerLocked: (id: string, locked: boolean) => void;
+  /** Ids de grupos colapsados (filhos ocultos na lista de camadas). */
+  collapsedGroups: ReadonlySet<string>;
+  onToggleCollapse: (id: string) => void;
+  /** Move a camada `draggedId` para junto de `targetId` (`before` = atrás). */
+  onReorderLayer: (draggedId: string, targetId: string, before: boolean) => void;
   onUpload: (files: File[]) => void;
   onChange: (attributes: Record<string, string | number | null>, label: string) => void;
   onTextChange: (text: string) => void;
@@ -125,6 +130,9 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
   onDeleteLayer,
   onToggleLayerVisibility,
   onToggleLayerLocked,
+  collapsedGroups,
+  onToggleCollapse,
+  onReorderLayer,
   onUpload,
   onChange,
   onTextChange,
@@ -149,6 +157,28 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
     onBoundsChange({ ...bounds, [key]: value });
   const isFillGradient = isGradientFill(properties?.fill);
   const solidFromGradient = gradient?.stops?.[0]?.color ?? '#7f77dd';
+
+  // ── Camadas: colapsar grupos + arrastar para reordenar ──
+  const [dragLayerId, setDragLayerId] = useState<string | null>(null);
+  const [dropHint, setDropHint] = useState<{ id: string; before: boolean } | null>(null);
+  const layersById = useMemo(() => new Map(layers.map((layer) => [layer.id, layer])), [layers]);
+  const hasChildren = useMemo(() => {
+    const parents = new Set<string>();
+    for (const layer of layers) if (layer.parentId) parents.add(layer.parentId);
+    return parents;
+  }, [layers]);
+  const visibleLayers = useMemo(
+    () =>
+      layers.filter((layer) => {
+        let parent = layer.parentId;
+        while (parent) {
+          if (collapsedGroups.has(parent)) return false;
+          parent = layersById.get(parent)?.parentId ?? null;
+        }
+        return true;
+      }),
+    [layers, layersById, collapsedGroups],
+  );
 
   return (
     <aside className="svg-editor-properties">
@@ -542,12 +572,56 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
       <Panel title={`Camadas (${layers.length})`}>
         <div className="svg-editor-layers">
           {layers.length === 0 && <span className="svg-editor-muted">Nenhum objeto</span>}
-          {layers.map((layer) => (
+          {visibleLayers.map((layer) => {
+            const collapsible = layer.tagName === 'g' && hasChildren.has(layer.id);
+            const dropClass =
+              dropHint?.id === layer.id ? ` drop-${dropHint.before ? 'after' : 'before'}` : '';
+            return (
             <div
               key={layer.id}
-              className={`svg-editor-layer-row${selectedId === layer.id ? ' selected' : ''}`}
+              draggable
+              onDragStart={(event) => {
+                setDragLayerId(layer.id);
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', layer.id);
+              }}
+              onDragOver={(event) => {
+                if (!dragLayerId || dragLayerId === layer.id) return;
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                setDropHint({ id: layer.id, before: event.clientY - rect.top > rect.height / 2 });
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const dragged = dragLayerId;
+                if (dragged && dragged !== layer.id && dropHint) {
+                  onReorderLayer(dragged, layer.id, dropHint.before);
+                }
+                setDragLayerId(null);
+                setDropHint(null);
+              }}
+              onDragEnd={() => {
+                setDragLayerId(null);
+                setDropHint(null);
+              }}
+              className={`svg-editor-layer-row${selectedId === layer.id ? ' selected' : ''}${dropClass}`}
               style={{ paddingLeft: 9 + layer.depth * 14 }}
             >
+              {collapsible ? (
+                <button
+                  type="button"
+                  className="svg-editor-layer-collapse"
+                  aria-label={collapsedGroups.has(layer.id) ? 'Expandir grupo' : 'Colapsar grupo'}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleCollapse(layer.id);
+                  }}
+                >
+                  {collapsedGroups.has(layer.id) ? '▸' : '▾'}
+                </button>
+              ) : (
+                <span className="svg-editor-layer-collapse-spacer" />
+              )}
               <button
                 type="button"
                 className="svg-editor-layer-select"
@@ -596,7 +670,8 @@ const SvgPropertiesPanel: React.FC<SvgPropertiesPanelProps> = ({
                 ×
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       </Panel>
 

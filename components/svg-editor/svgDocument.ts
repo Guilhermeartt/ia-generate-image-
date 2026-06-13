@@ -850,6 +850,29 @@ export const reorderSvgElement = (
   return serialize(document);
 };
 
+/**
+ * Move o elemento `id` para junto de `referenceId` no DOM (reordena z-order e
+ * re-parenta: o elemento passa a ser irmão de `referenceId`). `before=true` o
+ * insere ANTES (atrás no render); `false`, depois (à frente).
+ */
+export const moveSvgElement = (
+  markup: string,
+  id: string,
+  referenceId: string,
+  before: boolean,
+): string => {
+  if (id === referenceId) return markup;
+  const document = parseSvg(markup);
+  const moving = document.getElementById(id);
+  const reference = document.getElementById(referenceId);
+  const parent = reference?.parentElement;
+  if (!moving || !reference || !parent) return markup;
+  // Não pode mover um grupo para dentro de si mesmo.
+  if (moving.contains(reference)) return markup;
+  parent.insertBefore(moving, before ? reference : reference.nextSibling);
+  return serialize(document);
+};
+
 export const resizeSvgElement = (
   markup: string,
   id: string,
