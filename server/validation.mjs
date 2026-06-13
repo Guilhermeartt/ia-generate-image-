@@ -51,7 +51,9 @@ export const schemas = {
     markup: z
       .string()
       .min(1, 'obrigatório')
-      .max(1_000_000, 'SVG muito grande')
+      // Permite SVGs com fontes/imagens embutidas (base64). Teto abaixo do limite
+      // de corpo do Express (20 MB) para o JSON inteiro caber.
+      .max(15_000_000, 'SVG muito grande (máx. ~15 MB)')
       .refine((m) => m.trimStart().startsWith('<svg'), 'markup deve ser um SVG'),
     viewW: z.coerce.number().int().positive().max(100_000).optional(),
     viewH: z.coerce.number().int().positive().max(100_000).optional(),
