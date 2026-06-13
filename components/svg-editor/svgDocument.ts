@@ -670,8 +670,11 @@ export const getSvgElementProperties = (
     fontFamily: effectivePresentationValue(element, 'font-family', 'sans-serif'),
     fontSize: Number.parseFloat(effectivePresentationValue(element, 'font-size', '16')) || 16,
     fontWeight: effectivePresentationValue(element, 'font-weight', '400'),
+    fontStyle: effectivePresentationValue(element, 'font-style', 'normal'),
     letterSpacing: effectivePresentationValue(element, 'letter-spacing', 'normal'),
+    textDecoration: effectivePresentationValue(element, 'text-decoration', 'none'),
     textAnchor: effectivePresentationValue(element, 'text-anchor', 'start'),
+    borderRadius: Number.parseFloat(element.getAttribute('rx') || '0') || 0,
     textLength: element.hasAttribute('textLength')
       ? Number.parseFloat(element.getAttribute('textLength') || '0')
       : null,

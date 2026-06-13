@@ -334,7 +334,9 @@ const appendAdditionalElement = (
 ): void => {
   const wrapper = doc.createElementNS(SVG_NS, 'g');
   wrapper.setAttribute('data-scene-element-id', element.id);
-  if (element.rotation) {
+  if (element.sourceTransform) {
+    wrapper.setAttribute('transform', element.sourceTransform);
+  } else if (element.rotation) {
     wrapper.setAttribute(
       'transform',
       `rotate(${element.rotation} ${element.x + element.width / 2} ${element.y + element.height / 2})`,
@@ -352,17 +354,25 @@ const appendAdditionalElement = (
   if (element.type === 'text') {
     node = doc.createElementNS(SVG_NS, 'text');
     const align = element.textAlign ?? 'start';
-    const x = align === 'middle'
-      ? element.x + element.width / 2
-      : align === 'end' ? element.x + element.width : element.x;
+    const baselineMode = element.textPositionMode === 'baseline';
+    const x = baselineMode
+      ? element.x
+      : align === 'middle'
+        ? element.x + element.width / 2
+        : align === 'end' ? element.x + element.width : element.x;
     node.setAttribute('x', String(x));
-    node.setAttribute('y', String(element.y + element.height / 2));
+    node.setAttribute('y', String(baselineMode ? element.y : element.y + element.height / 2));
     node.setAttribute('text-anchor', align);
-    node.setAttribute('dominant-baseline', 'central');
+    if (!baselineMode) node.setAttribute('dominant-baseline', 'central');
     node.setAttribute('font-size', String(element.fontSize ?? Math.max(12, element.height * 0.55)));
     node.setAttribute('font-weight', String(element.fontWeight ?? 700));
+    if (element.fontStyle) node.setAttribute('font-style', element.fontStyle);
     node.setAttribute('fill', element.fill ?? '#ffffff');
     if (element.fontFamily) node.setAttribute('font-family', element.fontFamily);
+    if (element.letterSpacing) node.setAttribute('letter-spacing', element.letterSpacing);
+    if (element.textDecoration) node.setAttribute('text-decoration', element.textDecoration);
+    if (element.stroke) node.setAttribute('stroke', element.stroke);
+    if (element.strokeWidth) node.setAttribute('stroke-width', String(element.strokeWidth));
     node.textContent = element.text ?? element.name;
   } else if (element.type === 'image') {
     node = doc.createElementNS(SVG_NS, 'image');

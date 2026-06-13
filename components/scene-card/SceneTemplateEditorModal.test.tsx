@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Scene, SceneTemplateElement } from '../../types';
 import type { TemplateSlot } from '../svg-editor/types';
 import SceneTemplateEditorModal from './SceneTemplateEditorModal';
+
+afterEach(cleanup);
 
 const slots: TemplateSlot[] = [
   { id: 'title', type: 'text', name: 'Título', bounds: { x: 0, y: 0, width: 100, height: 20 } },
@@ -66,7 +68,7 @@ describe('SceneTemplateEditorModal', () => {
       expect.objectContaining({ type: 'text', name: 'Título cópia', text: 'Texto principal' }),
     ]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Texto' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar texto' }));
     expect(onElementsChange).toHaveBeenCalledWith([
       expect.objectContaining({ type: 'text', text: 'Novo texto' }),
     ]);
@@ -85,6 +87,7 @@ describe('SceneTemplateEditorModal', () => {
       {
         id: 'text-extra', type: 'text' as const, name: 'Texto extra',
         x: 10, y: 10, width: 100, height: 30, text: 'Oi',
+        fill: '#ffcc00', fontFamily: 'Inter', fontSize: 28, fontWeight: 800,
       },
       {
         id: 'image-extra', type: 'image' as const, name: 'Imagem extra',
@@ -95,14 +98,17 @@ describe('SceneTemplateEditorModal', () => {
     const Harness = () => {
       const [elements, setElements] = React.useState(initialElements);
       return (
-        <SceneTemplateEditorModal
-          scene={{ ...scene, templateElements: elements }}
-          markup={markup}
-          slots={slots}
-          onClose={vi.fn()}
-          onChange={vi.fn()}
-          onElementsChange={setElements}
-        />
+        <>
+          <span data-testid="state">{JSON.stringify(elements)}</span>
+          <SceneTemplateEditorModal
+            scene={{ ...scene, templateElements: elements }}
+            markup={markup}
+            slots={slots}
+            onClose={vi.fn()}
+            onChange={vi.fn()}
+            onElementsChange={setElements}
+          />
+        </>
       );
     };
 
@@ -110,12 +116,33 @@ describe('SceneTemplateEditorModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Duplicar Texto extra' }));
     expect(screen.getByRole('button', { name: 'Texto extra cópia (text)' })).toBeInTheDocument();
+    const duplicatedText = JSON.parse(screen.getByTestId('state').textContent ?? '[]')[1];
+    expect(duplicatedText).toMatchObject({
+      x: 10,
+      y: 10,
+      width: 100,
+      height: 30,
+      text: 'Oi',
+      fill: '#ffcc00',
+      fontFamily: 'Inter',
+      fontSize: 28,
+      fontWeight: 800,
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Duplicar Imagem extra' }));
     expect(screen.getByRole('button', { name: 'Imagem extra cópia (image)' })).toBeInTheDocument();
+    expect(screen.getByText(/duplicado na mesma posição/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Enviar Imagem extra para trás' }));
-    expect(screen.getByText('image · camada 1')).toBeInTheDocument();
+    expect(screen.getByText('camada 2 · image')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Buscar camada'), { target: { value: 'imagem' } });
+    expect(screen.queryByRole('button', { name: 'Texto extra (text)' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Imagem extra (image)' })).toBeInTheDocument();
+
+    expect(screen.getByLabelText('Zoom do canvas')).toHaveTextContent('100%');
+    fireEvent.click(screen.getByRole('button', { name: 'Aumentar zoom' }));
+    expect(screen.getByLabelText('Zoom do canvas')).toHaveTextContent('125%');
   });
 
   it('vincula um shape como máscara e o oculta automaticamente', () => {
@@ -156,5 +183,66 @@ describe('SceneTemplateEditorModal', () => {
 
     expect(screen.getByTestId('state').textContent).toContain('"maskElementId":"shape-mask"');
     expect(screen.getByTestId('state').textContent).toContain('"hidden":true');
+  });
+
+  it('duplica texto do modelo com posição e tipografia idênticas', () => {
+    const textMarkup = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+        <text
+          id="headline"
+          x="72"
+          y="96"
+          fill="#fed766"
+          font-family="Montserrat"
+          font-size="42"
+          font-weight="800"
+          font-style="italic"
+          letter-spacing="1.5"
+          text-decoration="underline"
+          text-anchor="middle"
+          stroke="#111111"
+          stroke-width="2"
+          transform="translate(8 4)"
+          data-slot='{"type":"text","name":"Headline"}'
+        >Original</text>
+      </svg>
+    `;
+    const textSlots: TemplateSlot[] = [
+      { id: 'headline', type: 'text', name: 'Headline', bounds: { x: 72, y: 96, width: 0, height: 0 } },
+    ];
+    const onElementsChange = vi.fn();
+
+    render(
+      <SceneTemplateEditorModal
+        scene={{ ...scene, lettering_notes: ['Conteúdo aplicado'] }}
+        markup={textMarkup}
+        slots={textSlots}
+        onClose={vi.fn()}
+        onChange={vi.fn()}
+        onElementsChange={onElementsChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicar Headline' }));
+    expect(onElementsChange).toHaveBeenCalledWith([
+      expect.objectContaining({
+        type: 'text',
+        text: 'Conteúdo aplicado',
+        x: 72,
+        y: 96,
+        fontFamily: 'Montserrat',
+        fontSize: 42,
+        fontWeight: '800',
+        fontStyle: 'italic',
+        letterSpacing: '1.5',
+        textDecoration: 'underline',
+        fill: '#fed766',
+        stroke: '#111111',
+        strokeWidth: 2,
+        textAlign: 'middle',
+        textPositionMode: 'baseline',
+        sourceTransform: 'translate(8 4)',
+      }),
+    ]);
   });
 });

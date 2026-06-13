@@ -487,8 +487,15 @@ export interface SceneTemplateElement {
   borderRadius?: number;
   fontFamily?: string;
   fontSize?: number;
-  fontWeight?: number;
+  fontWeight?: number | string;
+  fontStyle?: string;
+  letterSpacing?: string;
+  textDecoration?: string;
   textAlign?: 'start' | 'middle' | 'end';
+  /** Duplica textos SVG usando as coordenadas de baseline originais. */
+  textPositionMode?: 'box' | 'baseline';
+  /** Transformação SVG não destrutiva herdada do elemento original. */
+  sourceTransform?: string;
   animation?: SceneTemplateAnimation | null;
 }
 

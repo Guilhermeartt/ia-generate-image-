@@ -6,8 +6,9 @@ import type {
   SceneTemplateSlotOverride,
 } from '../../types';
 import type { TemplateSlot } from '../svg-editor/types';
-import { parseViewBox } from '../svg-editor/svgDocument';
+import { getSvgElementProperties, parseViewBox } from '../svg-editor/svgDocument';
 import { buildSceneSlotStyles, resolveSlotContents } from '../svg-editor/templateBinding';
+import { renderTemplate } from '../svg-editor/templateRender';
 import TemplateRenderer from '../svg-editor/TemplateRenderer';
 import SlotAnimationEditor from '../svg-editor/SlotAnimationEditor';
 
@@ -169,6 +170,9 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   const [selectedKey, setSelectedKey] = useState(
     slots[0] ? `slot:${slots[0].id}` : elements[0] ? `element:${elements[0].id}` : '',
   );
+  const [layerQuery, setLayerQuery] = useState('');
+  const [canvasZoom, setCanvasZoom] = useState(100);
+  const [actionMessage, setActionMessage] = useState('Pronto para editar');
   const dragRef = useRef<{
     key: string;
     startClientX: number;
@@ -206,34 +210,50 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   };
   const patchElement = (changes: Partial<SceneTemplateElement>) => {
     if (!selectedElement) return;
+    const normalized = 'rotation' in changes
+      ? { ...changes, sourceTransform: undefined }
+      : changes;
     onElementsChange(elements.map((element) => (
-      element.id === selectedElement.id ? { ...element, ...changes } : element
+      element.id === selectedElement.id ? { ...element, ...normalized } : element
     )));
   };
   const addElements = (next: SceneTemplateElement[]) => {
     onElementsChange([...elements, ...next]);
     const last = next[next.length - 1];
     if (last) setSelectedKey(`element:${last.id}`);
+    setActionMessage(`${next.length} elemento${next.length === 1 ? '' : 's'} adicionado${next.length === 1 ? '' : 's'}`);
   };
   const addElement = (type: SceneTemplateElementType) => {
     addElements([createElement(type, dimensions.width, dimensions.height, elements.length)]);
   };
   const removeElement = () => {
     if (!selectedElement) return;
-    onElementsChange(elements.filter((element) => element.id !== selectedElement.id));
+    onElementsChange(
+      elements
+        .filter((element) => element.id !== selectedElement.id)
+        .map((element) => (
+          element.maskElementId === selectedElement.id
+            ? { ...element, maskElementId: undefined }
+            : element
+        )),
+    );
+    setActionMessage(`${selectedElement.name} excluído`);
     setSelectedKey(slots[0] ? `slot:${slots[0].id}` : '');
   };
   const duplicateElementById = (elementId: string) => {
     const source = elements.find((element) => element.id === elementId);
     if (!source) return;
-    const copy = {
+    const copy: SceneTemplateElement = {
       ...source,
       id: createId(),
       name: `${source.name} cópia`,
-      x: source.x + 18,
-      y: source.y + 18,
     };
-    addElements([copy]);
+    const sourceIndex = elements.findIndex((element) => element.id === elementId);
+    const next = [...elements];
+    next.splice(sourceIndex + 1, 0, copy);
+    onElementsChange(next);
+    setSelectedKey(`element:${copy.id}`);
+    setActionMessage(`${source.name} duplicado na mesma posição`);
   };
   const duplicateElement = () => {
     if (selectedElement) duplicateElementById(selectedElement.id);
@@ -241,27 +261,62 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   const duplicateSlot = () => {
     if (!selectedSlot) return;
     const content = contents.find((item) => item.id === selectedSlot.id);
+    const composed = renderTemplate(markup, contents, { styleById });
+    const composedDocument = new DOMParser().parseFromString(composed, 'image/svg+xml');
+    const renderedRoot = Array.from(
+      composedDocument.querySelectorAll('[data-rendered-slot-id]'),
+    ).find((element) => element.getAttribute('data-rendered-slot-id') === selectedSlot.id);
+    const renderedElement = renderedRoot?.localName === 'g'
+      ? renderedRoot.querySelector('text, image, svg, rect, ellipse, path')
+      : renderedRoot;
+    const inspectionId = `duplicate-source-${selectedSlot.id}`;
+    renderedElement?.setAttribute('id', inspectionId);
+    const renderedMarkup = new XMLSerializer().serializeToString(composedDocument.documentElement);
+    const source =
+      getSvgElementProperties(renderedMarkup, inspectionId)
+      ?? getSvgElementProperties(markup, selectedSlot.id);
     const defaultWidth = dimensions.width * (selectedSlot.type === 'icon' ? 0.08 : 0.34);
     const defaultHeight = dimensions.height * (selectedSlot.type === 'text' ? 0.09 : 0.2);
-    const width = selectedSlot.bounds.width || defaultWidth;
-    const height = selectedSlot.bounds.height || defaultHeight;
+    const scale = override.scale ?? 1;
+    const width = ((source?.width ?? selectedSlot.bounds.width) || defaultWidth) * scale;
+    const height = ((source?.height ?? selectedSlot.bounds.height) || defaultHeight) * scale;
+    const fontSize = override.fontSize ?? source?.fontSize;
     const base = {
       id: createId(),
       type: selectedSlot.type,
       name: `${selectedSlot.name} cópia`,
-      x: selectedSlot.bounds.x + 18,
-      y: selectedSlot.bounds.y + 18,
+      x: (source?.x ?? selectedSlot.bounds.x) + (override.translateX ?? 0),
+      y: (source?.y ?? selectedSlot.bounds.y) + (override.translateY ?? 0),
       width,
       height,
-      fill: override.fill,
-      fontFamily: override.fontFamily,
-      fontSize: override.fontSize,
-      fontWeight: override.fontWeight,
-      opacity: override.opacity,
+      fill: override.fill ?? source?.fill,
+      fontFamily: override.fontFamily ?? source?.fontFamily,
+      fontSize: fontSize == null ? undefined : fontSize * scale,
+      fontWeight: override.fontWeight ?? source?.fontWeight,
+      fontStyle: source?.fontStyle,
+      letterSpacing: source?.letterSpacing,
+      textDecoration: source?.textDecoration,
+      textAlign: (source?.textAnchor === 'middle' || source?.textAnchor === 'end'
+        ? source.textAnchor
+        : 'start') as SceneTemplateElement['textAlign'],
+      opacity: override.opacity ?? source?.opacity,
+      rotation: override.rotation ?? source?.rotation,
+      sourceTransform:
+        override.translateX || override.translateY || override.scale || override.rotation
+          ? undefined
+          : source?.transform || undefined,
+      stroke: source?.stroke === 'none' ? undefined : source?.stroke,
+      strokeWidth: source?.strokeWidth || undefined,
+      borderRadius: source?.borderRadius || undefined,
       animation: override.animation ?? selectedSlot.animation,
     } satisfies SceneTemplateElement;
     const copy: SceneTemplateElement = content?.type === 'text'
-      ? { ...base, type: 'text', text: content.value }
+      ? {
+          ...base,
+          type: 'text',
+          text: content.value,
+          textPositionMode: source?.tagName === 'text' ? 'baseline' : 'box',
+        }
       : content?.type === 'image'
         ? { ...base, type: 'image', imageHref: content.href, imageFit: content.fit }
         : {
@@ -270,6 +325,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
             iconSvg: content?.type === 'icon' ? content.svg : override.iconSvg ?? ICON_PRESETS.estrela,
           };
     addElements([copy]);
+    setActionMessage(`${selectedSlot.name} duplicado com aparência preservada`);
   };
   const moveElement = (
     elementId: string,
@@ -288,12 +344,49 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
           : Math.max(0, index - 1);
     next.splice(target, 0, element);
     onElementsChange(next);
+    setActionMessage(`Camada ${element.name} reorganizada`);
   };
   const toggleElementVisibility = (elementId: string) => {
     onElementsChange(elements.map((element) => (
       element.id === elementId ? { ...element, hidden: !element.hidden } : element
     )));
   };
+
+  useEffect(() => {
+    const handleEditorShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select')) return;
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        if (selectedElement) duplicateElement();
+        else if (selectedSlot) duplicateSlot();
+        return;
+      }
+      if (selectedElement && (event.key === 'Delete' || event.key === 'Backspace')) {
+        event.preventDefault();
+        removeElement();
+        return;
+      }
+      if (selectedElement && (event.key === '[' || event.key === ']')) {
+        event.preventDefault();
+        moveElement(selectedElement.id, event.key === ']' ? 'forward' : 'backward');
+        return;
+      }
+      if (selectedElement && event.key.startsWith('Arrow')) {
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        patchElement({
+          x: selectedElement.x + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
+          y: selectedElement.y + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0),
+        });
+      }
+    };
+    window.addEventListener('keydown', handleEditorShortcut);
+    return () => window.removeEventListener('keydown', handleEditorShortcut);
+    // The handler must refresh whenever the current editor snapshot changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedElement, selectedSlot, elements, override, contents]);
 
   const imageOptions = useMemo(
     () => [
@@ -318,6 +411,14 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   const value = selectedElement ?? override;
   const patch = selectedElement ? patchElement : patchSlot;
   const total = slots.length + elements.length;
+  const normalizedLayerQuery = layerQuery.trim().toLocaleLowerCase('pt-BR');
+  const visibleLayerEntries = [...elements]
+    .reverse()
+    .filter((element) => (
+      !normalizedLayerQuery
+      || element.name.toLocaleLowerCase('pt-BR').includes(normalizedLayerQuery)
+      || element.type.toLocaleLowerCase('pt-BR').includes(normalizedLayerQuery)
+    ));
 
   const handlePreviewPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     const target = event.target as Element;
@@ -409,14 +510,14 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         </header>
 
         <div className="scene-template-editor-library">
-          <div>
-            <strong>Adicionar</strong>
-            <button type="button" onClick={() => addElement('text')}>Texto</button>
-            <button type="button" onClick={() => addElement('image')}>Imagem</button>
-            <button type="button" onClick={() => addElement('icon')}>Ícone</button>
-            <button type="button" onClick={() => addElement('shape')}>Forma</button>
+          <div className="scene-template-library-group">
+            <strong>Elementos</strong>
+            <button type="button" aria-label="Adicionar texto" onClick={() => addElement('text')}><b aria-hidden="true">T</b><span>Texto</span></button>
+            <button type="button" aria-label="Adicionar imagem" onClick={() => addElement('image')}><b aria-hidden="true">IMG</b><span>Imagem</span></button>
+            <button type="button" aria-label="Adicionar ícone" onClick={() => addElement('icon')}><b aria-hidden="true">ICO</b><span>Ícone</span></button>
+            <button type="button" aria-label="Adicionar forma" onClick={() => addElement('shape')}><b aria-hidden="true">SHP</b><span>Forma</span></button>
           </div>
-          <div>
+          <div className="scene-template-library-group scene-template-library-presets">
             <strong>Blocos prontos</strong>
             <button type="button" onClick={() => addElements(presetElements('title', dimensions.width, dimensions.height))}>Título central</button>
             <button type="button" onClick={() => addElements(presetElements('lower-third', dimensions.width, dimensions.height))}>Lower third</button>
@@ -427,6 +528,20 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
 
         <div className="scene-template-editor-body">
           <aside className="scene-template-slot-list">
+            <div className="scene-template-panel-head">
+              <div>
+                <strong>Camadas</strong>
+                <span>{elements.length} da cena, {slots.length} do modelo</span>
+              </div>
+              <label className="scene-template-layer-search">
+                <span className="sr-only">Buscar camadas da cena</span>
+                <input
+                  value={layerQuery}
+                  placeholder="Buscar camada"
+                  onChange={(event) => setLayerQuery(event.target.value)}
+                />
+              </label>
+            </div>
             {slots.length > 0 && <p className="scene-template-list-label">Do modelo</p>}
             {slots.map((slot, index) => (
               <button
@@ -441,7 +556,8 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
               </button>
             ))}
             {elements.length > 0 && <p className="scene-template-list-label">Da cena</p>}
-            {[...elements].reverse().map((element, reversedIndex) => {
+            {visibleLayerEntries.map((element) => {
+              const reversedIndex = elements.length - 1 - elements.findIndex((item) => item.id === element.id);
               const index = elements.length - 1 - reversedIndex;
               return (
               <div
@@ -454,8 +570,8 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                   aria-label={`${element.name} (${element.type})`}
                   onClick={() => setSelectedKey(`element:${element.id}`)}
                 >
-                  <span>{element.name}</span>
-                  <small>{element.type} · camada {index + 1}</small>
+                  <span><i className={`scene-template-layer-type type-${element.type}`}>{element.type.slice(0, 1).toUpperCase()}</i>{element.name}</span>
+                  <small>camada {index + 1} · {element.type}</small>
                 </button>
                 <div className="scene-template-layer-actions">
                   <button type="button" title={element.hidden ? 'Mostrar' : 'Ocultar'} aria-label={`${element.hidden ? 'Mostrar' : 'Ocultar'} ${element.name}`} onClick={() => toggleElementVisibility(element.id)}>
@@ -467,6 +583,9 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                 </div>
               </div>
             )})}
+            {elements.length > 0 && visibleLayerEntries.length === 0 && (
+              <div className="scene-template-layer-empty">Nenhuma camada encontrada.</div>
+            )}
           </aside>
 
           <main
@@ -476,15 +595,29 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
             onPointerUp={handlePreviewPointerUp}
             onPointerCancel={handlePreviewPointerUp}
           >
-            <TemplateRenderer
-              markup={markup}
-              contents={contents}
-              options={{
-                styleById,
-                additionalElements: elements,
-              }}
-              className="scene-template-preview-document"
-            />
+            <div className="scene-template-canvas-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+              <span>{selectedSlot?.name ?? selectedElement?.name ?? 'Nenhum elemento selecionado'}</span>
+              <div>
+                <button type="button" aria-label="Reduzir zoom" disabled={canvasZoom <= 50} onClick={() => setCanvasZoom((zoom) => Math.max(50, zoom - 25))}>-</button>
+                <output aria-label="Zoom do canvas">{canvasZoom}%</output>
+                <button type="button" aria-label="Aumentar zoom" disabled={canvasZoom >= 200} onClick={() => setCanvasZoom((zoom) => Math.min(200, zoom + 25))}>+</button>
+                <button type="button" onClick={() => setCanvasZoom(100)}>Ajustar</button>
+              </div>
+            </div>
+            <div
+              className="scene-template-canvas"
+              style={{ width: `${canvasZoom}%`, maxWidth: `${canvasZoom * 7.6}px` }}
+            >
+              <TemplateRenderer
+                markup={markup}
+                contents={contents}
+                options={{
+                  styleById,
+                  additionalElements: elements,
+                }}
+                className="scene-template-preview-document"
+              />
+            </div>
           </main>
 
           <aside className="scene-template-properties">
@@ -757,6 +890,10 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         </div>
 
         <footer className="scene-template-editor-foot">
+          <div className="scene-template-editor-status" aria-live="polite">
+            <span>{actionMessage}</span>
+            <small><kbd>Ctrl D</kbd> duplicar <kbd>Setas</kbd> mover <kbd>Shift + Setas</kbd> mover 10 <kbd>Del</kbd> excluir</small>
+          </div>
           <button
             type="button"
             className="btn btn-ghost"

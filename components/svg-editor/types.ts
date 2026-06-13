@@ -27,8 +27,11 @@ export interface SvgElementProperties {
   fontFamily: string;
   fontSize: number;
   fontWeight: string;
+  fontStyle: string;
   letterSpacing: string;
+  textDecoration: string;
   textAnchor: string;
+  borderRadius: number;
   textLength: number | null;
   lengthAdjust: string;
   structuredText: boolean;
