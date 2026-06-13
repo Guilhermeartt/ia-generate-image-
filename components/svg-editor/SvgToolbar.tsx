@@ -17,6 +17,7 @@ interface SvgToolbarProps {
   onBack: () => void;
   onExport: () => void;
   onNew: () => void;
+  onCleanup: () => void;
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -85,6 +86,7 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
   onBack,
   onExport,
   onNew,
+  onCleanup,
   zoom,
   onZoomIn,
   onZoomOut,
@@ -167,6 +169,14 @@ const SvgToolbar: React.FC<SvgToolbarProps> = ({
       </button>
 
       <div className="svg-editor-toolbar-spacer" />
+      <button
+        className="btn btn-ghost"
+        type="button"
+        title="Remove ocultos, grupos redundantes e defs não usados"
+        onClick={onCleanup}
+      >
+        Limpar
+      </button>
       <button className="btn btn-ghost" type="button" onClick={onNew}>
         Novo
       </button>

@@ -1205,3 +1205,154 @@ export const applyGradientFill = (markup: string, id: string, spec: GradientSpec
   element.setAttribute('fill', `url(#${gradientId})`);
   return serialize(document);
 };
+
+// ── Limpeza / organização do SVG (segura e determinística) ───────────────────
+// Remove elementos ocultos, achata grupos redundantes e descarta defs órfãos.
+// NÃO remove elementos "atrás de outros" (oclusão) — isso seria geometricamente
+// arriscado. Nunca remove algo referenciado por id.
+
+export interface CleanupSummary {
+  hidden: number;
+  groups: number;
+  defs: number;
+}
+
+const DEF_LIKE = new Set([
+  'defs',
+  'linearGradient',
+  'radialGradient',
+  'pattern',
+  'clipPath',
+  'mask',
+  'filter',
+  'symbol',
+  'marker',
+]);
+
+const REF_TAGS = 'linearGradient,radialGradient,pattern,clipPath,mask,filter,symbol,marker';
+
+const collectReferencedIds = (root: Element): Set<string> => {
+  const ids = new Set<string>();
+  const visit = (element: Element) => {
+    for (const attribute of Array.from(element.attributes)) {
+      for (const match of attribute.value.matchAll(/url\(\s*#([A-Za-z_][\w.:-]*)\s*\)/g)) {
+        ids.add(match[1]);
+      }
+      if (attribute.name === 'href' || attribute.name === 'xlink:href') {
+        const direct = attribute.value.trim().match(/^#([A-Za-z_][\w.:-]*)$/);
+        if (direct) ids.add(direct[1]);
+      }
+    }
+    for (const child of Array.from(element.children)) visit(child);
+  };
+  visit(root);
+  return ids;
+};
+
+const styleHas = (element: Element, pattern: RegExp): boolean =>
+  pattern.test((element.getAttribute('style') || '').toLowerCase());
+
+const isZeroSized = (element: Element): boolean => {
+  const num = (name: string) => Number.parseFloat(element.getAttribute(name) || 'NaN');
+  switch (element.localName) {
+    case 'rect':
+    case 'image':
+      return num('width') === 0 || num('height') === 0;
+    case 'circle':
+      return num('r') === 0;
+    case 'ellipse':
+      return num('rx') === 0 || num('ry') === 0;
+    default:
+      return false;
+  }
+};
+
+/**
+ * Limpa o SVG: remove ocultos, achata grupos redundantes e remove defs órfãos.
+ * Retorna o markup limpo e um resumo do que foi removido.
+ */
+export const cleanupSvg = (markup: string): { markup: string; summary: CleanupSummary } => {
+  const document = parseSvg(markup);
+  const root = document.documentElement;
+  const summary: CleanupSummary = { hidden: 0, groups: 0, defs: 0 };
+
+  const insideDef = (element: Element): boolean => {
+    let parent = element.parentElement;
+    while (parent && parent !== root) {
+      if (DEF_LIKE.has(parent.localName)) return true;
+      parent = parent.parentElement;
+    }
+    return false;
+  };
+
+  // 1. Ocultos / tamanho zero (apenas na árvore renderizável; nunca referenciados).
+  const referenced = collectReferencedIds(root);
+  for (const element of Array.from(root.querySelectorAll('*'))) {
+    if (DEF_LIKE.has(element.localName) || insideDef(element)) continue;
+    if (element.id && referenced.has(element.id)) continue;
+    const displayNone =
+      element.getAttribute('display') === 'none' || styleHas(element, /(?:^|;)\s*display\s*:\s*none/);
+    const isGroup = element.localName === 'g';
+    // display:none esconde toda a subárvore (seguro até em grupos). Os demais só
+    // em formas-folha, pois filhos poderiam sobrescrever visibility/opacity.
+    const leafHidden =
+      !isGroup &&
+      (element.getAttribute('visibility') === 'hidden' ||
+        styleHas(element, /(?:^|;)\s*visibility\s*:\s*hidden/) ||
+        element.getAttribute('opacity') === '0' ||
+        Number.parseFloat(element.getAttribute('opacity') || 'NaN') === 0 ||
+        styleHas(element, /(?:^|;)\s*opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)/) ||
+        isZeroSized(element));
+    if (displayNone || leafHidden) {
+      element.remove();
+      summary.hidden += 1;
+    }
+  }
+
+  // 2. Grupos: remove vazios e desembrulha redundantes (sem atributos que afetem
+  //    o render — exceto um id não referenciado). Repete até estabilizar.
+  const groupRefs = collectReferencedIds(root);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const group of Array.from(root.querySelectorAll('g'))) {
+      if (insideDef(group)) continue;
+      if (group.children.length === 0) {
+        group.remove();
+        summary.groups += 1;
+        changed = true;
+        continue;
+      }
+      const attributeNames = Array.from(group.attributes).map((attribute) => attribute.name);
+      const onlyUnusedId =
+        attributeNames.length === 0 ||
+        (attributeNames.length === 1 &&
+          attributeNames[0] === 'id' &&
+          !groupRefs.has(group.id));
+      if (onlyUnusedId) {
+        group.replaceWith(...Array.from(group.childNodes));
+        summary.groups += 1;
+        changed = true;
+      }
+    }
+  }
+
+  // 3. Defs órfãos (nada referencia o id). Repete até estabilizar (refs encadeadas).
+  changed = true;
+  while (changed) {
+    changed = false;
+    const refs = collectReferencedIds(root);
+    for (const def of Array.from(root.querySelectorAll(REF_TAGS))) {
+      if (def.id && !refs.has(def.id)) {
+        def.remove();
+        summary.defs += 1;
+        changed = true;
+      }
+    }
+  }
+  for (const defs of Array.from(root.querySelectorAll('defs'))) {
+    if (defs.children.length === 0) defs.remove();
+  }
+
+  return { markup: serialize(document), summary };
+};

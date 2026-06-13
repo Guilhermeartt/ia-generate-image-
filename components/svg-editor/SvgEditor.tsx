@@ -10,6 +10,7 @@ import type { SlotAnimation } from './slotAnimation';
 import type { GradientSpec, SlotType, SvgCamera, SvgEditorDocument, SvgTool } from './types';
 import {
   applyGradientFill,
+  cleanupSvg,
   createBlankSvg,
   duplicateSvgElement,
   getSlotMeta,
@@ -145,6 +146,21 @@ const SvgEditor: React.FC = () => {
     },
     [applyChange, documentState.markup],
   );
+
+  const runCleanup = useCallback(() => {
+    const { markup, summary } = cleanupSvg(documentState.markup);
+    const total = summary.hidden + summary.groups + summary.defs;
+    if (markup === documentState.markup || total === 0) {
+      setMessage({ text: 'Nada a limpar — o SVG já está enxuto.', tone: 'info' });
+      return;
+    }
+    applyChange(markup, 'Limpar SVG');
+    setSelectedId(null);
+    setMessage({
+      text: `Limpeza: ${summary.hidden} oculto(s), ${summary.groups} grupo(s), ${summary.defs} def(s) removidos.`,
+      tone: 'success',
+    });
+  }, [applyChange, documentState.markup]);
 
   const applyGradientToSelected = useCallback(
     (spec: GradientSpec) => {
@@ -449,6 +465,7 @@ const SvgEditor: React.FC = () => {
         onBack={() => reorderSelected('back')}
         onExport={exportSvg}
         onNew={resetDocument}
+        onCleanup={runCleanup}
         zoom={camera.zoom}
         onZoomIn={() => setCamera((value) => ({ ...value, zoom: Math.min(8, value.zoom * 1.2) }))}
         onZoomOut={() =>

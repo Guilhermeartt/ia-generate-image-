@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendSvgElement,
   applyGradientFill,
+  cleanupSvg,
   createBlankSvg,
   duplicateSvgElement,
   getSlotMeta,
@@ -475,5 +476,67 @@ describe('degradês (gradientes)', () => {
       fill: '#123456',
     });
     expect(readGradient(markup, id)).toBeNull();
+  });
+});
+
+describe('cleanupSvg', () => {
+  it('remove ocultos (display:none, opacity 0, tamanho zero), mantém visíveis', () => {
+    const { markup, summary } = cleanupSvg(`
+      <svg viewBox="0 0 100 100">
+        <rect id="ok" x="0" y="0" width="10" height="10" fill="#000"/>
+        <rect id="none" display="none" width="10" height="10"/>
+        <rect id="op0" opacity="0" width="10" height="10"/>
+        <rect id="zero" width="0" height="10"/>
+        <circle id="visivel" cx="5" cy="5" r="4"/>
+      </svg>
+    `);
+    expect(markup).toContain('id="ok"');
+    expect(markup).toContain('id="visivel"');
+    expect(markup).not.toContain('id="none"');
+    expect(markup).not.toContain('id="op0"');
+    expect(markup).not.toContain('id="zero"');
+    expect(summary.hidden).toBe(3);
+  });
+
+  it('achata grupo redundante mas mantém grupo com transform', () => {
+    const { markup, summary } = cleanupSvg(`
+      <svg viewBox="0 0 100 100">
+        <g><rect id="a" width="10" height="10"/><rect id="b" width="10" height="10"/></g>
+        <g transform="translate(5 5)"><rect id="c" width="10" height="10"/></g>
+        <g id="vazio"></g>
+      </svg>
+    `);
+    expect(markup).toContain('id="a"');
+    expect(markup).toContain('id="b"');
+    expect(markup).toContain('transform="translate(5 5)"');
+    expect(markup).not.toContain('id="vazio"');
+    // o grupo sem atributos foi desembrulhado: rect a/b agora são filhos diretos
+    expect(markup.match(/<g[ >]/g)?.length).toBe(1);
+    expect(summary.groups).toBeGreaterThanOrEqual(2);
+  });
+
+  it('remove defs órfãos mas mantém os referenciados', () => {
+    const { markup, summary } = cleanupSvg(`
+      <svg viewBox="0 0 100 100">
+        <defs>
+          <linearGradient id="usado"><stop offset="0" stop-color="#f00"/></linearGradient>
+          <linearGradient id="orfao"><stop offset="0" stop-color="#0f0"/></linearGradient>
+        </defs>
+        <rect width="10" height="10" fill="url(#usado)"/>
+      </svg>
+    `);
+    expect(markup).toContain('id="usado"');
+    expect(markup).not.toContain('id="orfao"');
+    expect(summary.defs).toBe(1);
+  });
+
+  it('não remove elemento oculto que é referenciado por id', () => {
+    const { markup } = cleanupSvg(`
+      <svg viewBox="0 0 100 100">
+        <rect id="fonte" display="none" width="10" height="10"/>
+        <use href="#fonte" x="20" y="20"/>
+      </svg>
+    `);
+    expect(markup).toContain('id="fonte"');
   });
 });
