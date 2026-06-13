@@ -805,8 +805,19 @@
         .scene-template-canvas-toolbar > span { display: none; }
         .scene-template-canvas-toolbar > div { overflow-x: auto; }
         .scene-template-properties { max-height: 42vh; }
-        .scene-template-editor-foot { padding: 9px 10px; }
-        .scene-template-history-actions .btn { padding-inline: 8px; }
+        .scene-template-editor-foot {
+          flex-wrap: wrap;
+          padding: 9px 10px;
+        }
+        .scene-template-editor-status { flex: 1 0 100%; }
+        .scene-template-history-actions { flex: 1; }
+        .scene-template-history-actions .btn,
+        .scene-template-editor-foot > .btn {
+          flex: 1;
+          min-width: 0;
+          padding-inline: 8px;
+          white-space: nowrap;
+        }
       }
 
       /* ── SVG editor ─────────────────────────────────────────── */

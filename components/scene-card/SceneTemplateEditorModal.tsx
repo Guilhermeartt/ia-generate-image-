@@ -38,6 +38,9 @@ const HISTORY_LIMIT = 10;
 const cloneSnapshot = (snapshot: SceneEditorSnapshot): SceneEditorSnapshot =>
   JSON.parse(JSON.stringify(snapshot)) as SceneEditorSnapshot;
 
+const sameValue = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
 const ICON_PRESETS = {
   estrela:
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12 2 3.1 6.3 6.9 1-5 4.8 1.2 6.9-6.2-3.3L5.8 21 7 14.1l-5-4.8 6.9-1Z" fill="currentColor"/></svg>',
@@ -206,6 +209,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     elements,
     selectedKey,
   });
+  const editorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     currentSnapshotRef.current = {
       overrides: scene.templateOverrides ?? {},
@@ -236,6 +240,13 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
+
+  useEffect(() => {
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    editorRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, []);
 
   const contents = useMemo(
     () => resolveSlotContents(slots, scene, scene.templateOverrides),
@@ -293,6 +304,10 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     canUndo: historyRef.current.past.length > 0,
     canRedo: historyRef.current.future.length > 0,
   });
+  const selectKey = (key: string) => {
+    currentSnapshotRef.current = { ...currentSnapshotRef.current, selectedKey: key };
+    setSelectedKey(key);
+  };
   const pushHistory = () => {
     const history = historyRef.current;
     history.past = [...history.past, cloneSnapshot(currentSnapshotRef.current)].slice(-HISTORY_LIMIT);
@@ -345,6 +360,8 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     slotId: string,
     nextOverride: SceneTemplateSlotOverride | undefined,
   ) => {
+    const currentOverride = currentSnapshotRef.current.overrides[slotId];
+    if (sameValue(currentOverride, nextOverride)) return;
     pushHistory();
     const overrides = { ...currentSnapshotRef.current.overrides };
     if (nextOverride && Object.keys(nextOverride).length > 0) overrides[slotId] = nextOverride;
@@ -353,6 +370,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     onChange(slotId, nextOverride);
   };
   const commitElementsChange = (nextElements: SceneTemplateElement[]) => {
+    if (sameValue(currentSnapshotRef.current.elements, nextElements)) return;
     pushHistory();
     currentSnapshotRef.current = {
       ...currentSnapshotRef.current,
@@ -375,7 +393,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   const addElements = (next: SceneTemplateElement[]) => {
     commitElementsChange([...elements, ...next]);
     const last = next[next.length - 1];
-    if (last) setSelectedKey(`element:${last.id}`);
+    if (last) selectKey(`element:${last.id}`);
     setActionMessage(`${next.length} elemento${next.length === 1 ? '' : 's'} adicionado${next.length === 1 ? '' : 's'}`);
   };
   const addElement = (type: SceneTemplateElementType) => {
@@ -383,17 +401,23 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   };
   const removeElement = () => {
     if (!selectedElement) return;
+    const remaining = elements.filter((element) => element.id !== selectedElement.id);
+    const releasedMaskId = selectedElement.type === 'image'
+      ? selectedElement.maskElementId
+      : undefined;
     commitElementsChange(
-      elements
-        .filter((element) => element.id !== selectedElement.id)
+      remaining
         .map((element) => (
           element.maskElementId === selectedElement.id
             ? { ...element, maskElementId: undefined }
+            : releasedMaskId === element.id
+              && !remaining.some((item) => item.maskElementId === releasedMaskId)
+              ? { ...element, hidden: false }
             : element
         )),
     );
     setActionMessage(`${selectedElement.name} excluído`);
-    setSelectedKey(slots[0] ? `slot:${slots[0].id}` : '');
+    selectKey(slots[0] ? `slot:${slots[0].id}` : remaining[0] ? `element:${remaining[0].id}` : '');
   };
   const duplicateElementById = (elementId: string) => {
     const source = elements.find((element) => element.id === elementId);
@@ -407,7 +431,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
     const next = [...elements];
     next.splice(sourceIndex + 1, 0, copy);
     commitElementsChange(next);
-    setSelectedKey(`element:${copy.id}`);
+    selectKey(`element:${copy.id}`);
     setActionMessage(`${source.name} duplicado na mesma posição`);
   };
   const duplicateElement = () => {
@@ -465,15 +489,20 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
       borderRadius: source?.borderRadius || undefined,
       animation: override.animation ?? selectedSlot.animation,
     } satisfies SceneTemplateElement;
-    const copy: SceneTemplateElement = content?.type === 'text'
+    const copy: SceneTemplateElement = selectedSlot.type === 'text'
       ? {
           ...base,
           type: 'text',
-          text: content.value,
+          text: content?.type === 'text' ? content.value : override.text ?? selectedSlot.name,
           textPositionMode: source?.tagName === 'text' ? 'baseline' : 'box',
         }
-      : content?.type === 'image'
-        ? { ...base, type: 'image', imageHref: content.href, imageFit: content.fit }
+      : selectedSlot.type === 'image'
+        ? {
+            ...base,
+            type: 'image',
+            imageHref: content?.type === 'image' ? content.href : override.imageHref ?? '',
+            imageFit: content?.type === 'image' ? content.fit : override.imageFit,
+          }
         : {
             ...base,
             type: 'icon',
@@ -506,10 +535,57 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
       element.id === elementId ? { ...element, hidden: !element.hidden } : element
     )));
   };
+  const setImageMaskElement = (image: SceneTemplateElement, maskElementId?: string) => {
+    const previousMaskId = image.maskElementId;
+    if (previousMaskId === maskElementId) return;
+    commitElementsChange(elements.map((element) => {
+      if (element.id === image.id) {
+        const mask = elements.find((item) => item.id === maskElementId);
+        return mask?.type === 'shape'
+          ? {
+              ...element,
+              maskElementId,
+              x: mask.x,
+              y: mask.y,
+              width: mask.width,
+              height: mask.height,
+              rotation: 0,
+            }
+          : { ...element, maskElementId: undefined };
+      }
+      if (element.id === maskElementId) return { ...element, hidden: true };
+      if (
+        element.id === previousMaskId
+        && !elements.some((item) => item.id !== image.id && item.maskElementId === previousMaskId)
+      ) {
+        return { ...element, hidden: false };
+      }
+      return element;
+    }));
+  };
+  const setQuickImageMask = (
+    image: SceneTemplateElement,
+    imageMask: SceneTemplateElement['imageMask'],
+  ) => {
+    const previousMaskId = image.maskElementId;
+    commitElementsChange(elements.map((element) => {
+      if (element.id === image.id) {
+        return { ...element, imageMask, maskElementId: undefined };
+      }
+      if (
+        element.id === previousMaskId
+        && !elements.some((item) => item.id !== image.id && item.maskElementId === previousMaskId)
+      ) {
+        return { ...element, hidden: false };
+      }
+      return element;
+    }));
+  };
 
   useEffect(() => {
     const handleEditorShortcut = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       const command = event.metaKey || event.ctrlKey;
       if (command && event.key.toLowerCase() === 'z') {
         event.preventDefault();
@@ -522,8 +598,6 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         redo();
         return;
       }
-      if (target?.closest('input, textarea, select')) return;
-
       if (command && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         if (selectedElement) duplicateElement();
@@ -579,6 +653,11 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
   const patch = selectedElement ? patchElement : patchSlot;
   const total = slots.length + elements.length;
   const normalizedLayerQuery = layerQuery.trim().toLocaleLowerCase('pt-BR');
+  const visibleSlots = slots.filter((slot) => (
+    !normalizedLayerQuery
+    || slot.name.toLocaleLowerCase('pt-BR').includes(normalizedLayerQuery)
+    || slot.type.toLocaleLowerCase('pt-BR').includes(normalizedLayerQuery)
+  ));
   const visibleLayerEntries = [...elements]
     .reverse()
     .filter((element) => (
@@ -668,7 +747,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
         historyRecorded: false,
       };
     }
-    setSelectedKey(key);
+    selectKey(key);
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
   };
@@ -729,16 +808,19 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
       className="scene-template-editor-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Editar composição da cena"
+      aria-labelledby="scene-template-editor-title"
+      aria-describedby="scene-template-editor-description"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="scene-template-editor">
+      <div className="scene-template-editor" ref={editorRef} tabIndex={-1}>
         <header className="scene-template-editor-head">
           <div>
-            <strong>Editar composição da cena</strong>
-            <span>{total} elemento{total === 1 ? '' : 's'} · alterações exclusivas desta cena</span>
+            <strong id="scene-template-editor-title">Editar composição da cena</strong>
+            <span id="scene-template-editor-description">
+              {total} elemento{total === 1 ? '' : 's'} · alterações exclusivas desta cena
+            </span>
           </div>
           <button type="button" onClick={onClose} aria-label="Fechar">×</button>
         </header>
@@ -777,18 +859,21 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
               </label>
             </div>
             {slots.length > 0 && <p className="scene-template-list-label">Do modelo</p>}
-            {slots.map((slot, index) => (
+            {visibleSlots.map((slot) => {
+              const index = slots.findIndex((candidate) => candidate.id === slot.id);
+              return (
               <button
                 key={slot.id}
                 type="button"
                 aria-label={`${index + 1}. ${slot.name} (${slot.type})`}
                 className={selectedKey === `slot:${slot.id}` ? 'selected' : ''}
-                onClick={() => setSelectedKey(`slot:${slot.id}`)}
+                onClick={() => selectKey(`slot:${slot.id}`)}
               >
                 <span>{index + 1}. {slot.name}</span>
                 <small>{slot.type}</small>
               </button>
-            ))}
+              );
+            })}
             {elements.length > 0 && <p className="scene-template-list-label">Da cena</p>}
             {visibleLayerEntries.map((element) => {
               const reversedIndex = elements.length - 1 - elements.findIndex((item) => item.id === element.id);
@@ -802,7 +887,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                   type="button"
                   className="scene-template-layer-main"
                   aria-label={`${element.name} (${element.type})`}
-                  onClick={() => setSelectedKey(`element:${element.id}`)}
+                  onClick={() => selectKey(`element:${element.id}`)}
                 >
                   <span><i className={`scene-template-layer-type type-${element.type}`}>{element.type.slice(0, 1).toUpperCase()}</i>{element.name}</span>
                   <small>camada {index + 1} · {element.type}</small>
@@ -817,7 +902,9 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                 </div>
               </div>
             )})}
-            {elements.length > 0 && visibleLayerEntries.length === 0 && (
+            {normalizedLayerQuery
+              && visibleSlots.length === 0
+              && visibleLayerEntries.length === 0 && (
               <div className="scene-template-layer-empty">Nenhuma camada encontrada.</div>
             )}
           </aside>
@@ -996,10 +1083,10 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                           <select
                             className="field"
                             value={selectedElement.imageMask ?? 'rectangle'}
-                            onChange={(event) => patchElement({
-                              imageMask: event.target.value as SceneTemplateElement['imageMask'],
-                              maskElementId: undefined,
-                            })}
+                            onChange={(event) => setQuickImageMask(
+                              selectedElement,
+                              event.target.value as SceneTemplateElement['imageMask'],
+                            )}
                           >
                             <option value="rectangle">Retângulo</option>
                             <option value="rounded">Retângulo arredondado</option>
@@ -1017,25 +1104,7 @@ const SceneTemplateEditorModal: React.FC<SceneTemplateEditorModalProps> = ({
                             value={selectedElement.maskElementId ?? ''}
                             onChange={(event) => {
                               const maskElementId = event.target.value || undefined;
-                              const mask = elements.find((element) => element.id === maskElementId);
-                              if (mask?.type === 'shape') {
-                                commitElementsChange(elements.map((element) => {
-                                  if (element.id === selectedElement.id) {
-                                    return {
-                                      ...element,
-                                      maskElementId,
-                                      x: mask.x,
-                                      y: mask.y,
-                                      width: mask.width,
-                                      height: mask.height,
-                                      rotation: 0,
-                                    };
-                                  }
-                                  return element.id === mask.id ? { ...element, hidden: true } : element;
-                                }));
-                              } else {
-                                patchElement({ maskElementId });
-                              }
+                              setImageMaskElement(selectedElement, maskElementId);
                             }}
                           >
                             <option value="">Nenhum shape vinculado</option>

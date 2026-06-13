@@ -163,6 +163,32 @@ describe('renderTemplate', () => {
     expect(group?.getAttribute('style')).toContain('translate(20px, 0px)');
   });
 
+  it('mantém o recorte fixo durante o Ken Burns de imagens', () => {
+    const marked = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+        <rect id="photo" x="20" y="10" width="160" height="80" rx="12"
+          data-slot='{"type":"image","name":"Foto"}'/>
+      </svg>
+    `;
+    const out = renderTemplate(
+      marked,
+      [{ id: 'photo', type: 'image', href: 'data:image/png;base64,aA==' }],
+      {
+        styleById: {
+          photo: { opacity: 1, contentTransform: 'scale(1.2) translateX(-5%)' },
+        },
+      },
+    );
+    const doc = parse(out);
+    const outer = doc.querySelector('[data-rendered-slot-id="photo"]');
+    const image = outer?.querySelector('image');
+    const inner = outer?.querySelector('g');
+
+    expect(outer?.getAttribute('clip-path')).toMatch(/^url\(#slot-clip-/);
+    expect(image?.hasAttribute('clip-path')).toBe(false);
+    expect(inner?.getAttribute('style')).toContain('scale(1.2)');
+  });
+
   it('aplica máscaras geométricas rápidas em imagens', () => {
     const out = renderTemplate(createBlankSvg(), [], {
       additionalElements: [

@@ -62,7 +62,7 @@ describe('slotStyleAtTime', () => {
     }, 2);
 
     expect(style.opacity).toBe(1);
-    expect(style.transform).toContain('scale(1.1)');
+    expect(style.contentTransform).toContain('scale(1.1)');
   });
 
   it('limita a intensidade do Ken Burns e suporta movimento panorâmico', () => {
@@ -73,8 +73,8 @@ describe('slotStyleAtTime', () => {
       kenBurnsDurationSeconds: 2,
     }, 2);
 
-    expect(style.transform).toContain('scale(1.4)');
-    expect(style.transform).toContain('translateX(-20%)');
+    expect(style.contentTransform).toContain('scale(1.4)');
+    expect(style.contentTransform).toContain('translateX(-20%)');
   });
 });
 

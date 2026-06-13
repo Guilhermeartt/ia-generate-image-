@@ -139,10 +139,34 @@ describe('SceneTemplateEditorModal', () => {
     fireEvent.change(screen.getByPlaceholderText('Buscar camada'), { target: { value: 'imagem' } });
     expect(screen.queryByRole('button', { name: 'Texto extra (text)' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Imagem extra (image)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\d+\. Imagem principal \(image\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /\d+\. Título \(text\)/ })).not.toBeInTheDocument();
 
     expect(screen.getByLabelText('Zoom do canvas')).toHaveTextContent('100%');
     fireEvent.click(screen.getByRole('button', { name: 'Aumentar zoom' }));
     expect(screen.getByLabelText('Zoom do canvas')).toHaveTextContent('125%');
+  });
+
+  it('leva o foco ao editor e restaura o foco anterior ao fechar', () => {
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { container, unmount } = render(
+      <SceneTemplateEditorModal
+        scene={scene}
+        markup={markup}
+        slots={slots}
+        onClose={vi.fn()}
+        onChange={vi.fn()}
+        onElementsChange={vi.fn()}
+      />,
+    );
+
+    expect(document.activeElement).toBe(container.querySelector('.scene-template-editor'));
+    unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
   });
 
   it('vincula um shape como máscara e o oculta automaticamente', () => {
@@ -183,6 +207,51 @@ describe('SceneTemplateEditorModal', () => {
 
     expect(screen.getByTestId('state').textContent).toContain('"maskElementId":"shape-mask"');
     expect(screen.getByTestId('state').textContent).toContain('"hidden":true');
+
+    fireEvent.change(maskSelectors[maskSelectors.length - 1], {
+      target: { value: '' },
+    });
+    expect(screen.getByTestId('state').textContent).not.toContain('"maskElementId"');
+    expect(screen.getByTestId('state').textContent).toContain('"hidden":false');
+  });
+
+  it('restaura o shape ao trocar uma máscara vinculada por máscara rápida', () => {
+    const initialElements: SceneTemplateElement[] = [
+      {
+        id: 'quick-shape', type: 'shape', name: 'Shape', x: 20, y: 20,
+        width: 80, height: 80, shape: 'circle', hidden: true,
+      },
+      {
+        id: 'quick-image', type: 'image', name: 'Imagem', x: 20, y: 20,
+        width: 80, height: 80, imageHref: 'data:image/png;base64,aA==',
+        maskElementId: 'quick-shape',
+      },
+    ];
+    const Harness = () => {
+      const [elements, setElements] = React.useState(initialElements);
+      return (
+        <>
+          <span data-testid="quick-mask-state">{JSON.stringify(elements)}</span>
+          <SceneTemplateEditorModal
+            scene={{ ...scene, templateElements: elements }}
+            markup={markup}
+            slots={slots}
+            onClose={vi.fn()}
+            onChange={vi.fn()}
+            onElementsChange={setElements}
+          />
+        </>
+      );
+    };
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Imagem (image)' }));
+    fireEvent.change(screen.getByLabelText('Máscara rápida'), { target: { value: 'star' } });
+
+    const state = screen.getByTestId('quick-mask-state').textContent ?? '';
+    expect(state).toContain('"imageMask":"star"');
+    expect(state).not.toContain('"maskElementId"');
+    expect(state).toContain('"hidden":false');
   });
 
   it('duplica texto do modelo com posição e tipografia idênticas', () => {
@@ -371,8 +440,47 @@ describe('SceneTemplateEditorModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refazer edição da cena' }));
     expect(screen.getByTestId('history-state').textContent).toContain('"x":30');
 
+    const xInput = screen.getByLabelText('X');
+    xInput.focus();
+    fireEvent.keyDown(xInput, { key: 'z', ctrlKey: true });
+    expect(screen.getByTestId('history-state').textContent).toContain('"x":30');
+
+    xInput.blur();
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(screen.getByTestId('history-state').textContent).toContain('"x":12');
+  });
+
+  it('desfaz alterações de slots e ignora restauração sem mudança', () => {
+    const Harness = () => {
+      const [overrides, setOverrides] = React.useState<Scene['templateOverrides']>({});
+      return (
+        <>
+          <span data-testid="slot-history-state">{JSON.stringify(overrides)}</span>
+          <SceneTemplateEditorModal
+            scene={{ ...scene, templateOverrides: overrides }}
+            markup={markup}
+            slots={slots}
+            onClose={vi.fn()}
+            onChange={(slotId, next) => setOverrides((current) => {
+              const updated = { ...current };
+              if (next) updated[slotId] = next;
+              else delete updated[slotId];
+              return updated;
+            })}
+            onElementsChange={vi.fn()}
+          />
+        </>
+      );
+    };
+
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurar' }));
+    expect(screen.getByRole('button', { name: 'Desfazer edição da cena' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Texto'), { target: { value: 'Alterado' } });
+    expect(screen.getByTestId('slot-history-state').textContent).toContain('"text":"Alterado"');
+    fireEvent.click(screen.getByRole('button', { name: 'Desfazer edição da cena' }));
+    expect(screen.getByTestId('slot-history-state')).toHaveTextContent('{}');
   });
 
   it('limita o histórico da edição da cena aos 10 estados mais recentes', () => {

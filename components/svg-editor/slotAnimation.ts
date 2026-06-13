@@ -27,6 +27,8 @@ export interface SlotAnimation {
 export interface EnterExitStyle {
   opacity: number;
   transform?: string;
+  /** Movimento interno do conteúdo, mantendo a caixa/máscara exterior fixa. */
+  contentTransform?: string;
   filter?: string;
 }
 
@@ -155,7 +157,7 @@ export const slotStyleAtTime = (animation: SlotAnimation, t: number): EnterExitS
   const kenBurns = kenBurnsTransform(animation.kenBurns, kenBurnsProgress);
   return {
     ...style,
-    transform: [style.transform, kenBurns].filter(Boolean).join(' ') || undefined,
+    contentTransform: kenBurns,
   };
 };
 

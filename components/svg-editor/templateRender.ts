@@ -208,6 +208,7 @@ const buildIcon = (doc: XMLDocument, slot: Element, content: SlotIconContent): E
 export interface SlotStyle {
   opacity?: number;
   transform?: string;
+  contentTransform?: string;
   filter?: string;
 }
 
@@ -226,6 +227,27 @@ const styleToCss = (style: SlotStyle): string => {
   if (style.transform) parts.push(`transform:${style.transform}`);
   if (style.filter) parts.push(`filter:${style.filter}`);
   return parts.join(';');
+};
+
+const appendStyledContent = (
+  doc: XMLDocument,
+  outer: Element,
+  content: Element,
+  style: SlotStyle,
+): void => {
+  if (!style.contentTransform) {
+    outer.appendChild(content);
+    return;
+  }
+  const clipPath = content.getAttribute('clip-path');
+  if (clipPath) {
+    outer.setAttribute('clip-path', clipPath);
+    content.removeAttribute('clip-path');
+  }
+  const inner = doc.createElementNS(SVG_NS, 'g');
+  inner.setAttribute('style', styleToCss({ transform: style.contentTransform }));
+  inner.appendChild(content);
+  outer.appendChild(inner);
 };
 
 const safeImageHref = (href: string): string =>
@@ -345,7 +367,8 @@ const appendAdditionalElement = (
   wrapper.setAttribute(
     'style',
     styleToCss({
-      ...style,
+      transform: style?.transform,
+      filter: style?.filter,
       opacity: (element.hidden ? 0 : element.opacity ?? 1) * (style?.opacity ?? 1),
     }),
   );
@@ -421,7 +444,19 @@ const appendAdditionalElement = (
   }
 
   if (!node) return;
-  wrapper.appendChild(node);
+  if (element.type === 'image' && style?.contentTransform && !node.hasAttribute('clip-path')) {
+    clipCounter += 1;
+    const clipId = `scene-element-motion-clip-${clipCounter}`;
+    const clip = doc.createElementNS(SVG_NS, 'clipPath');
+    clip.setAttribute('id', clipId);
+    const maskNode = buildImageMaskNode(doc, element, elementsById);
+    if (maskNode) {
+      clip.appendChild(maskNode);
+      ensureDefs(doc).appendChild(clip);
+      node.setAttribute('clip-path', `url(#${clipId})`);
+    }
+  }
+  appendStyledContent(doc, wrapper, node, style ?? {});
   doc.documentElement.appendChild(wrapper);
 };
 
@@ -451,8 +486,12 @@ export const renderTemplate = (
     if (style) {
       const group = doc.createElementNS(SVG_NS, 'g');
       group.setAttribute('data-rendered-slot-id', content.id);
-      group.setAttribute('style', styleToCss(style));
-      group.appendChild(replacement);
+      group.setAttribute('style', styleToCss({
+        opacity: style.opacity,
+        transform: style.transform,
+        filter: style.filter,
+      }));
+      appendStyledContent(doc, group, replacement, style);
       slot.parentNode.replaceChild(group, slot);
     } else {
       slot.parentNode.replaceChild(replacement, slot);
@@ -465,9 +504,13 @@ export const renderTemplate = (
     if (!slot?.parentNode) continue;
     const group = doc.createElementNS(SVG_NS, 'g');
     group.setAttribute('data-rendered-slot-id', slotId);
-    group.setAttribute('style', styleToCss(style));
+    group.setAttribute('style', styleToCss({
+      opacity: style.opacity,
+      transform: style.transform,
+      filter: style.filter,
+    }));
     slot.parentNode.replaceChild(group, slot);
-    group.appendChild(slot);
+    appendStyledContent(doc, group, slot, style);
   }
   const additionalElements = options?.additionalElements ?? [];
   const elementsById = new Map(additionalElements.map((element) => [element.id, element]));
