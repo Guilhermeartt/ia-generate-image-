@@ -9,6 +9,12 @@ interface VideoTimelineProps {
   fps: number;
   selectedClipId: string | null;
   onSelectClip: (clip: StoryboardVideoScene, startFrame: number) => void;
+  /** Ids dos planos marcados para edição em lote (transição). */
+  bulkSelectedIds?: readonly string[];
+  /** Ctrl/Cmd-clique: alterna o plano na seleção em lote. */
+  onBulkToggle?: (clipId: string) => void;
+  /** Shift-clique: estende a seleção em lote até o plano clicado. */
+  onBulkRange?: (clipId: string) => void;
   playheadFrame: number;
   onScrubStart?: () => void;
   onScrub: (frame: number) => void;
@@ -21,11 +27,15 @@ const VideoTimeline: React.FC<VideoTimelineProps> = ({
   fps,
   selectedClipId,
   onSelectClip,
+  bulkSelectedIds,
+  onBulkToggle,
+  onBulkRange,
   playheadFrame,
   onScrubStart,
   onScrub,
   onScrubEnd,
 }) => {
+  const bulkSelected = useMemo(() => new Set(bulkSelectedIds ?? []), [bulkSelectedIds]);
   const totalSeconds = totalFrames / fps;
   const tickEvery = totalSeconds <= 20 ? 1 : totalSeconds <= 60 ? 5 : 10;
   const tickCount = Math.ceil(totalSeconds / tickEvery) + 1;
@@ -141,6 +151,7 @@ const VideoTimeline: React.FC<VideoTimelineProps> = ({
           const left = (placement.startFrame / Math.max(1, totalFrames)) * 100;
           const width = (placement.durationFrames / Math.max(1, totalFrames)) * 100;
           const isSelected = placement.clip.id === selectedClipId;
+          const isBulkSelected = bulkSelected.has(placement.clip.id);
           const transition = transitionOptionFor(placement.clip.transitionIn);
           const transitionWidth = Math.min(
             100,
@@ -150,14 +161,24 @@ const VideoTimeline: React.FC<VideoTimelineProps> = ({
             <button
               type="button"
               key={placement.clip.id}
-              className={`vs-timeline-clip${isSelected ? ' is-selected' : ''}${placement.clip.hasOverride ? ' has-override' : ''}`}
+              className={`vs-timeline-clip${isSelected ? ' is-selected' : ''}${isBulkSelected ? ' is-bulk-selected' : ''}${placement.clip.hasOverride ? ' has-override' : ''}`}
               style={{ left: `${left}%`, width: `calc(${width}% - 2px)` }}
+              aria-pressed={isBulkSelected || undefined}
               onClick={(event) => {
                 event.stopPropagation();
+                if (event.shiftKey && onBulkRange) {
+                  onBulkRange(placement.clip.id);
+                  return;
+                }
+                if ((event.metaKey || event.ctrlKey) && onBulkToggle) {
+                  onBulkToggle(placement.clip.id);
+                  return;
+                }
                 onSelectClip(placement.clip, placement.startFrame);
               }}
-              aria-label={`Selecionar ${placement.clip.title}, duração ${placement.clip.durationSeconds.toFixed(1)} segundos${placement.transitionInFrames > 0 ? `, entrada com ${transition.label} por ${(placement.transitionInFrames / fps).toFixed(2)} segundos` : ''}${placement.clip.hasOverride ? ', modificado' : ''}`}
+              aria-label={`Selecionar ${placement.clip.title}, duração ${placement.clip.durationSeconds.toFixed(1)} segundos${placement.transitionInFrames > 0 ? `, entrada com ${transition.label} por ${(placement.transitionInFrames / fps).toFixed(2)} segundos` : ''}${placement.clip.hasOverride ? ', modificado' : ''}${isBulkSelected ? ', marcado para transição em lote' : ''}`}
             >
+              {isBulkSelected && <span className="vs-timeline-clip-check" aria-hidden="true">✓</span>}
               <img src={placement.clip.imageUrl} alt="" />
               <span className="vs-timeline-clip-label">{placement.clip.title}</span>
               <span className="vs-timeline-clip-duration">{placement.clip.durationSeconds.toFixed(1)}s</span>

@@ -42,6 +42,20 @@ interface MotionPanelProps {
   onDefaultsCommit: (next: Partial<MotionDefaults>, label: string) => void;
   onDefaultsPreview: (next: Partial<MotionDefaults>) => void;
   onClearOverride: () => void;
+  /** Aplicação em lote do movimento deste plano. */
+  canBulkApply: boolean;
+  /** Todos os planos da timeline, em ordem (para o checklist). */
+  allClips: ReadonlyArray<StoryboardVideoScene>;
+  /** Primeiro plano global — não tem transição de entrada (transição é pulada nele). */
+  firstClipId: string | null;
+  bulkSelection: readonly string[];
+  /** Quais propriedades a aplicação em lote copia deste plano. */
+  bulkProps: { transition: boolean; kenBurns: boolean; duration: boolean };
+  onToggleBulkProp: (key: 'transition' | 'kenBurns' | 'duration') => void;
+  onToggleBulkClip: (clipId: string) => void;
+  onSetBulkSelection: (clipIds: string[]) => void;
+  onApplyToAll: () => void;
+  onApplyToSelection: () => void;
   panelId: string;
   tabId: string;
 }
@@ -62,6 +76,16 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
   onDefaultsCommit,
   onDefaultsPreview,
   onClearOverride,
+  canBulkApply,
+  allClips,
+  firstClipId,
+  bulkSelection,
+  bulkProps,
+  onToggleBulkProp,
+  onToggleBulkClip,
+  onSetBulkSelection,
+  onApplyToAll,
+  onApplyToSelection,
   panelId,
   tabId,
 }) => {
@@ -69,6 +93,20 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
   const transitionCategories = Object.keys(TRANSITION_CATEGORY_LABELS) as TransitionCategory[];
   const effectiveTransitionSeconds = Math.min(displayTransitionSeconds, maxTransitionSeconds);
   const clampTransitionSeconds = (seconds: number) => Math.min(seconds, maxTransitionSeconds);
+  const allClipIds = allClips.map(c => c.id);
+  const bulkSelectedSet = new Set(bulkSelection);
+  const selectedCount = allClipIds.filter(id => bulkSelectedSet.has(id)).length;
+  const anyBulkProp = bulkProps.transition || bulkProps.kenBurns || bulkProps.duration;
+  const kenBurnsLabel = KEN_BURNS_OPTIONS.find(o => o.id === displayKenBurns.direction)?.label ?? 'Nenhum';
+  const bulkPropOptions: ReadonlyArray<{ key: 'transition' | 'kenBurns' | 'duration'; label: string; detail: string }> = [
+    {
+      key: 'transition',
+      label: 'Transição',
+      detail: displayTransition === 'cut' ? selectedTransition.label : `${selectedTransition.shortLabel} · ${effectiveTransitionSeconds.toFixed(2)}s`,
+    },
+    { key: 'kenBurns', label: 'Ken Burns', detail: `${kenBurnsLabel} · ${Math.round(displayKenBurns.intensity * 100)}%` },
+    { key: 'duration', label: 'Duração', detail: `${displayDuration.toFixed(1)}s` },
+  ];
   const handleClearOverride = () => {
     if (typeof window === 'undefined' || window.confirm('Resetar duração, transição e Ken Burns deste plano?')) {
       onClearOverride();
@@ -194,6 +232,91 @@ const MotionPanel: React.FC<MotionPanelProps> = ({
           ))}
         </select>
       </fieldset>
+
+      {canBulkApply && (
+        <div className="vs-bulk">
+          <p className="vs-section-title">Aplicar a vários planos</p>
+          <p className="vs-hint">Copia deste plano para os planos escolhidos:</p>
+          <div className="vs-bulk-props" role="group" aria-label="Propriedades a aplicar em lote">
+            {bulkPropOptions.map(option => (
+              <button
+                key={option.key}
+                type="button"
+                aria-label={option.label}
+                aria-pressed={bulkProps[option.key]}
+                className={`vs-bulk-prop${bulkProps[option.key] ? ' is-active' : ''}`}
+                onClick={() => onToggleBulkProp(option.key)}
+              >
+                <strong>{option.label}</strong>
+                <small>{option.detail}</small>
+              </button>
+            ))}
+          </div>
+          <div className="vs-bulk-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onApplyToAll}
+              disabled={!anyBulkProp || allClipIds.length === 0}
+            >
+              Todos os planos
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={onApplyToSelection}
+              disabled={!anyBulkProp || selectedCount === 0}
+            >
+              Selecionados ({selectedCount})
+            </button>
+          </div>
+          {!anyBulkProp && (
+            <p className="vs-hint vs-warning">Escolha ao menos uma propriedade acima para aplicar.</p>
+          )}
+          <details className="vs-bulk-list">
+            <summary>
+              Escolher planos
+              <span className="vs-bulk-list-count">{selectedCount}/{allClipIds.length}</span>
+            </summary>
+            <div className="vs-bulk-list-actions">
+              <button type="button" onClick={() => onSetBulkSelection(allClipIds)}>
+                Marcar todos
+              </button>
+              <button
+                type="button"
+                onClick={() => onSetBulkSelection([])}
+                disabled={selectedCount === 0}
+              >
+                Limpar
+              </button>
+            </div>
+            <ul>
+              {allClips.map(item => {
+                const isFirst = item.id === firstClipId;
+                return (
+                  <li key={item.id}>
+                    <label className={`vs-bulk-item${item.id === clip.id ? ' is-current' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bulkSelectedSet.has(item.id)}
+                        onChange={() => onToggleBulkClip(item.id)}
+                      />
+                      <span className="vs-bulk-item-title">{item.title}</span>
+                      <span className="vs-bulk-item-transition">
+                        {isFirst ? 'Início' : transitionOptionFor(item.transitionIn).shortLabel}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+          <p className="vs-hint">
+            Dica: na timeline, <strong>Ctrl/Cmd-clique</strong> marca um plano e{' '}
+            <strong>Shift-clique</strong> marca um intervalo.
+          </p>
+        </div>
+      )}
 
       <p className="vs-section-title">Ken Burns (pan + zoom)</p>
       <div className="vs-row-2">

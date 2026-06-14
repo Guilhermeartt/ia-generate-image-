@@ -317,6 +317,105 @@ describe('VideoStudio', () => {
     );
   });
 
+  const threeScenes: Scene[] = [
+    scene,
+    { ...scene, id: 11, scene_id: 3, order: 2, imageUrl: 'data:image/png;base64,second' },
+    { ...scene, id: 12, scene_id: 4, order: 3, imageUrl: 'data:image/png;base64,third' },
+  ];
+
+  it('aplica a transição atual a todos os planos (exceto o primeiro)', () => {
+    const onClipOverridesChange = vi.fn();
+    render(
+      <VideoStudio
+        scenes={threeScenes}
+        aspectRatio="16:9"
+        onLetteringChange={vi.fn()}
+        onImageSourcesChange={vi.fn()}
+        onClipOverridesChange={onClipOverridesChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Selecionar Cena 3-1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Movimento/ }));
+    // Define a transição padrão (estado interno → reflete no plano selecionado)
+    fireEvent.change(screen.getByLabelText('Transição padrão'), { target: { value: 'iris' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Todos os planos$/ }));
+
+    // Planos 2 e 3 recebem a transição; o primeiro (id 10) é ignorado
+    expect(onClipOverridesChange).toHaveBeenCalledWith(
+      11,
+      expect.arrayContaining([expect.objectContaining({ sourceId: 'main', transitionIn: 'iris' })]),
+    );
+    expect(onClipOverridesChange).toHaveBeenCalledWith(
+      12,
+      expect.arrayContaining([expect.objectContaining({ sourceId: 'main', transitionIn: 'iris' })]),
+    );
+    expect(onClipOverridesChange).not.toHaveBeenCalledWith(10, expect.anything());
+  });
+
+  it('aplica a transição só aos planos marcados com Ctrl-clique na timeline', () => {
+    const onClipOverridesChange = vi.fn();
+    render(
+      <VideoStudio
+        scenes={threeScenes}
+        aspectRatio="16:9"
+        onLetteringChange={vi.fn()}
+        onImageSourcesChange={vi.fn()}
+        onClipOverridesChange={onClipOverridesChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Selecionar Cena 3-1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Movimento/ }));
+    fireEvent.change(screen.getByLabelText('Transição padrão'), { target: { value: 'iris' } });
+
+    // Ctrl-clique marca o plano 3 (Cena 4-1) sem trocar o plano selecionado
+    fireEvent.click(screen.getByRole('button', { name: /Selecionar Cena 4-1/i }), { ctrlKey: true });
+
+    fireEvent.click(screen.getByRole('button', { name: /Aplicar aos selecionados/i }));
+
+    expect(onClipOverridesChange).toHaveBeenCalledWith(
+      12,
+      expect.arrayContaining([expect.objectContaining({ sourceId: 'main', transitionIn: 'iris' })]),
+    );
+    expect(onClipOverridesChange).not.toHaveBeenCalledWith(11, expect.anything());
+  });
+
+  it('aplica Ken Burns a todos os planos (inclusive o primeiro) sem gravar transição', () => {
+    const onClipOverridesChange = vi.fn();
+    render(
+      <VideoStudio
+        scenes={threeScenes}
+        aspectRatio="16:9"
+        onLetteringChange={vi.fn()}
+        onImageSourcesChange={vi.fn()}
+        onClipOverridesChange={onClipOverridesChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Selecionar Cena 3-1/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Movimento/ }));
+    fireEvent.change(screen.getByLabelText('Ken Burns padrão'), { target: { value: 'pan-left' } });
+    // Ativa Ken Burns e desativa Transição (que vem ligada por padrão)
+    fireEvent.click(screen.getByRole('button', { name: 'Ken Burns' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Transição' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Todos os planos$/ }));
+
+    // O primeiro plano (id 10) também recebe Ken Burns — não é mais excluído
+    expect(onClipOverridesChange).toHaveBeenCalledWith(
+      10,
+      expect.arrayContaining([
+        expect.objectContaining({ sourceId: 'main', kenBurns: expect.objectContaining({ direction: 'pan-left' }) }),
+      ]),
+    );
+    // Transição estava desligada: nenhum override gravado deve conter transitionIn
+    onClipOverridesChange.mock.calls.forEach(([, overrides]) => {
+      (overrides ?? []).forEach((override: Record<string, unknown>) => {
+        expect(override).not.toHaveProperty('transitionIn');
+      });
+    });
+  });
+
   it('exposes a timeline with each clip selectable', () => {
     render(
       <VideoStudio

@@ -2936,6 +2936,21 @@
         content: ''; position: absolute; top: 4px; right: 4px;
         width: 6px; height: 6px; border-radius: 50%; background: #FBBF24;
       }
+      .vs-timeline-clip.is-bulk-selected {
+        border-color: var(--cyan);
+        box-shadow: 0 0 0 2px rgba(34,211,238,0.45);
+      }
+      .vs-timeline-clip.is-bulk-selected.is-selected {
+        box-shadow: 0 0 0 2px rgba(99,102,241,0.45), 0 0 0 4px rgba(34,211,238,0.5);
+      }
+      .vs-timeline-clip-check {
+        position: absolute; top: 3px; left: 3px; z-index: 2;
+        width: 14px; height: 14px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 4px;
+        background: var(--cyan); color: #04121a;
+        font-size: 10px; font-weight: 800; line-height: 1;
+      }
       .vs-timeline-clip img { width: 100%; height: 70%; object-fit: cover; display: block; }
       .vs-timeline-clip-label { font-size: 9px; color: var(--text-2); padding: 2px 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .vs-timeline-clip-duration {
@@ -2981,6 +2996,66 @@
         border-right: 6px solid transparent;
         border-top: 8px solid #ef4444;
       }
+
+      /* Aplicação em lote de transição */
+      .vs-bulk-bar {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(34,211,238,0.32);
+        background: rgba(34,211,238,0.08);
+        font-size: 12px; color: var(--text-2);
+      }
+      .vs-bulk-bar strong { color: var(--text-1); }
+      .vs-bulk-bar-actions { display: flex; gap: 8px; }
+      .vs-bulk { display: flex; flex-direction: column; gap: 8px; }
+      .vs-bulk-props { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      .vs-bulk-prop {
+        display: flex; flex-direction: column; gap: 2px;
+        padding: 7px 8px;
+        border: 1px solid var(--border); border-radius: 8px;
+        background: var(--surface-2); color: var(--text-3);
+        cursor: pointer; text-align: left;
+        transition: border-color .12s, background .12s, color .12s;
+      }
+      .vs-bulk-prop:hover { border-color: var(--text-3); }
+      .vs-bulk-prop.is-active { border-color: var(--cyan); background: rgba(34,211,238,0.10); color: var(--text-1); }
+      .vs-bulk-prop strong { font-size: 11px; }
+      .vs-bulk-prop small { font-size: 9px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .vs-bulk-prop.is-active small { color: var(--cyan); }
+      .vs-bulk-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .vs-bulk-list { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+      .vs-bulk-list > summary {
+        list-style: none; cursor: pointer;
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 8px 10px;
+        font-size: 11px; font-weight: 700; color: var(--text-2);
+      }
+      .vs-bulk-list > summary::-webkit-details-marker { display: none; }
+      .vs-bulk-list-count {
+        font-size: 10px; font-weight: 700; color: var(--cyan);
+        background: rgba(34,211,238,0.12); border-radius: 999px; padding: 1px 7px;
+      }
+      .vs-bulk-list-actions { display: flex; gap: 8px; padding: 0 10px 8px; }
+      .vs-bulk-list-actions button {
+        flex: 1; padding: 5px 8px; font-size: 10px; font-weight: 600;
+        border-radius: 6px; border: 1px solid var(--border);
+        background: var(--surface-3); color: var(--text-2); cursor: pointer;
+      }
+      .vs-bulk-list-actions button:disabled { opacity: .5; cursor: default; }
+      .vs-bulk-list ul { list-style: none; margin: 0; padding: 0 6px 6px; max-height: 168px; overflow-y: auto; }
+      .vs-bulk-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 5px 6px; border-radius: 6px;
+        font-size: 11px; color: var(--text-2); cursor: pointer;
+      }
+      .vs-bulk-item:hover { background: var(--surface-3); }
+      .vs-bulk-item.is-current { background: var(--indigo-s); }
+      .vs-bulk-item.is-disabled { opacity: .45; cursor: default; }
+      .vs-bulk-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .vs-bulk-item-transition { font-size: 9px; color: var(--text-4); font-weight: 700; }
 
       /* Panel */
       .vs-panel {

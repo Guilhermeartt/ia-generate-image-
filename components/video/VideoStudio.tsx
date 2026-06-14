@@ -21,6 +21,7 @@ import {
   videoImageSourcesForScene,
 } from './videoScenes';
 import VideoTimeline from './VideoTimeline';
+import { buildBulkClipUpdates, type BulkClipPatch } from './bulkClipOverrides';
 import { Tabs } from './VideoStudioControls';
 import { useHistoryStack } from './useHistoryStack';
 import { useDraftPatch } from './useDraftPatch';
@@ -47,8 +48,15 @@ interface VideoStudioProps {
   onExportRequest?: (options: { aspectRatio: string; audio?: VideoAudioTrack; totalSeconds: number }) => void;
 }
 
+interface SceneOverrideSnapshot {
+  sceneId: number;
+  previousLettering: SceneVideoLettering | undefined;
+  previousOverrides: SceneVideoClipOverride[] | undefined;
+}
+
 type HistorySnapshot =
-  | { kind: 'scene'; sceneId: number; previousLettering: SceneVideoLettering | undefined; previousOverrides: SceneVideoClipOverride[] | undefined }
+  | ({ kind: 'scene' } & SceneOverrideSnapshot)
+  | { kind: 'scene-bulk'; entries: SceneOverrideSnapshot[] }
   | { kind: 'defaults'; previousDefaults: MotionDefaults }
   | { kind: 'audio'; previousAudio: VideoAudioTrack | undefined }
   | { kind: 'aspect'; previousAspect: string };
@@ -143,8 +151,11 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
   const [overrideScope, setOverrideScope] = useState<'parent' | 'clip'>('parent');
   const [colorHistory, setColorHistory] = useState<string[]>(['#ffffff', '#FBBF24', '#22D3EE', '#F472B6']);
   const [missingClipWarning, setMissingClipWarning] = useState<string | null>(null);
+  const [bulkSelection, setBulkSelection] = useState<string[]>([]);
+  const [bulkProps, setBulkProps] = useState({ transition: true, kenBurns: false, duration: false });
 
   const playerRef = useRef<PlayerRef>(null);
+  const bulkAnchorRef = useRef<string | null>(null);
   const history = useHistoryStack<HistorySnapshot>();
   const audioUrlRef = useRef<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -202,6 +213,15 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
       setSelectedClipId(null);
     }
   }, [selectedClipId, selectedClipFromList, videoScenes.length]);
+
+  // Podar seleção em lote para clipes que ainda existem
+  useEffect(() => {
+    setBulkSelection(prev => {
+      const valid = new Set(videoScenes.map(clip => clip.id));
+      const next = prev.filter(id => valid.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [videoScenes]);
 
   // Aplicar drafts ao vivo no clip selecionado (preview)
   const displayLettering: SceneVideoLettering | undefined = useMemo(() => {
@@ -406,11 +426,108 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
     overrideDraft.cancel();
   }, [selectedSourceScene, selectedClip, onClipOverridesChange, pushSceneHistory, overrideDraft]);
 
+  // ── Seleção em lote (timeline + checklist) ──
+  // O 1º plano não tem transição de entrada, mas aceita Ken Burns/duração, então
+  // pode ser selecionado — só os campos de transição são removidos ao aplicar nele.
+  const firstClipId = videoScenes[0]?.id ?? null;
+
+  const toggleBulkClip = useCallback((clipId: string) => {
+    bulkAnchorRef.current = clipId;
+    setBulkSelection(prev => (
+      prev.includes(clipId) ? prev.filter(id => id !== clipId) : [...prev, clipId]
+    ));
+  }, []);
+
+  const rangeBulkSelect = useCallback((clipId: string) => {
+    const order = videoScenes.map(clip => clip.id);
+    const targetIdx = order.indexOf(clipId);
+    if (targetIdx < 0) return;
+    const anchor = bulkAnchorRef.current;
+    const anchorIdx = anchor ? order.indexOf(anchor) : -1;
+    if (anchorIdx < 0) {
+      toggleBulkClip(clipId);
+      return;
+    }
+    const [lo, hi] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+    const range = order.slice(lo, hi + 1);
+    setBulkSelection(prev => Array.from(new Set([...prev, ...range])));
+  }, [videoScenes, toggleBulkClip]);
+
+  const clearBulkSelection = useCallback(() => setBulkSelection([]), []);
+
+  const anyBulkProp = bulkProps.transition || bulkProps.kenBurns || bulkProps.duration;
+  const toggleBulkProp = useCallback((key: 'transition' | 'kenBurns' | 'duration') => {
+    setBulkProps(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const bulkPropsLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (bulkProps.transition) parts.push('transição');
+    if (bulkProps.kenBurns) parts.push('Ken Burns');
+    if (bulkProps.duration) parts.push('duração');
+    return parts.join(' + ');
+  }, [bulkProps]);
+
+  const applyMotionToClips = useCallback((clipIds: readonly string[], label: string) => {
+    if (!onClipOverridesChange || !selectedClip || !anyBulkProp) return;
+    const wanted = new Set(clipIds);
+    const targets = videoScenes
+      .filter(clip => wanted.has(clip.id))
+      .map(clip => {
+        const patch: BulkClipPatch = {};
+        // Transição não se aplica ao 1º plano (sem entrada).
+        if (bulkProps.transition && clip.id !== firstClipId) {
+          patch.transitionIn = selectedClip.transitionIn;
+          patch.transitionDurationSeconds = selectedClip.transitionDurationSeconds;
+          patch.transitionEasing = selectedClip.transitionEasing;
+        }
+        if (bulkProps.kenBurns) patch.kenBurns = selectedClip.kenBurns;
+        if (bulkProps.duration) patch.durationSeconds = selectedClip.durationSeconds;
+        return { sceneId: clip.sceneId, sourceId: clip.sourceId, patch };
+      })
+      .filter(target => Object.keys(target.patch).length > 0);
+    if (targets.length === 0) return;
+
+    const updates = buildBulkClipUpdates(scenes, targets);
+    if (updates.length === 0) return;
+
+    const affected = new Set(updates.map(update => update.sceneId));
+    const entries = scenes
+      .filter(scene => affected.has(scene.id))
+      .map(scene => ({
+        sceneId: scene.id,
+        previousLettering: scene.videoLettering,
+        previousOverrides: scene.videoClipOverrides,
+      }));
+    history.push(label, { kind: 'scene-bulk', entries });
+    updates.forEach(update => onClipOverridesChange(update.sceneId, update.overrides));
+  }, [onClipOverridesChange, selectedClip, anyBulkProp, bulkProps, videoScenes, firstClipId, scenes, history]);
+
+  const applyMotionToAll = useCallback(() => {
+    applyMotionToClips(videoScenes.map(clip => clip.id), `Aplicar ${bulkPropsLabel} a todos os planos`);
+  }, [videoScenes, applyMotionToClips, bulkPropsLabel]);
+
+  const applyMotionToSelection = useCallback(() => {
+    const count = bulkSelection.filter(id => videoScenes.some(clip => clip.id === id)).length;
+    applyMotionToClips(bulkSelection, `Aplicar ${bulkPropsLabel} a ${count} plano${count === 1 ? '' : 's'}`);
+    clearBulkSelection();
+  }, [bulkSelection, videoScenes, applyMotionToClips, bulkPropsLabel, clearBulkSelection]);
+
+  const eligibleBulkCount = useMemo(
+    () => bulkSelection.filter(id => videoScenes.some(clip => clip.id === id)).length,
+    [bulkSelection, videoScenes],
+  );
+
   // Undo / Redo
   const applyHistorySnapshot = useCallback((snap: HistorySnapshot) => {
     if (snap.kind === 'scene') {
       onLetteringChange(snap.sceneId, snap.previousLettering);
       if (onClipOverridesChange) onClipOverridesChange(snap.sceneId, snap.previousOverrides);
+    } else if (snap.kind === 'scene-bulk') {
+      snap.entries.forEach(entry => {
+        onLetteringChange(entry.sceneId, entry.previousLettering);
+        if (onClipOverridesChange) onClipOverridesChange(entry.sceneId, entry.previousOverrides);
+      });
     } else if (snap.kind === 'defaults') {
       setDefaults(snap.previousDefaults);
     } else if (snap.kind === 'audio') {
@@ -685,11 +802,36 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
             fps={FPS}
             selectedClipId={selectedClip?.id ?? null}
             onSelectClip={selectScene}
+            bulkSelectedIds={bulkSelection}
+            onBulkToggle={onClipOverridesChange ? toggleBulkClip : undefined}
+            onBulkRange={onClipOverridesChange ? rangeBulkSelect : undefined}
             playheadFrame={playheadFrame}
             onScrubStart={handleScrubStart}
             onScrub={handleScrub}
             onScrubEnd={handleScrubEnd}
           />
+          {onClipOverridesChange && eligibleBulkCount > 0 && (
+            <div className="vs-bulk-bar" role="status">
+              <span>
+                {eligibleBulkCount} plano{eligibleBulkCount === 1 ? '' : 's'} selecionado{eligibleBulkCount === 1 ? '' : 's'}
+                {' · aplicar: '}
+                <strong>{anyBulkProp ? bulkPropsLabel : 'nada (escolha em Movimento)'}</strong>
+              </span>
+              <div className="vs-bulk-bar-actions">
+                <button type="button" className="btn btn-ghost" onClick={clearBulkSelection}>
+                  Limpar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={applyMotionToSelection}
+                  disabled={!anyBulkProp}
+                >
+                  Aplicar aos selecionados
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="vs-panel">
@@ -772,6 +914,16 @@ const VideoStudio: React.FC<VideoStudioProps> = ({
               }}
               onDefaultsCommit={commitDefaults}
               onClearOverride={clearClipOverride}
+              canBulkApply={Boolean(onClipOverridesChange)}
+              allClips={videoScenes}
+              firstClipId={firstClipId}
+              bulkSelection={bulkSelection}
+              bulkProps={bulkProps}
+              onToggleBulkProp={toggleBulkProp}
+              onToggleBulkClip={toggleBulkClip}
+              onSetBulkSelection={setBulkSelection}
+              onApplyToAll={applyMotionToAll}
+              onApplyToSelection={applyMotionToSelection}
               panelId="vs-tab-panel-motion"
               tabId="vs-tab-motion"
             />
